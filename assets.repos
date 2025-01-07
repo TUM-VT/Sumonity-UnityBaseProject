@@ -1,33 +1,33 @@
 repositories:
   Assets/3d_model:
     type: git
-    url: git@gitlab.lrz.de:tum-vt/simulation/3dmodel_tum_main_campus.git
-    version: opensource
+    url: https://gitlab.lrz.de/tum-gis/tum2twin-datasets.git
+    version: main
   Assets/Sumonity:
     type: git
-    url: git@gitlab.lrz.de:tum-vt/simulation/unity_prefab_sumo_bridge.git
-    version: opensource
+    url: git@github.com:TUM-VT/Sumonity.git
+    version: dev-version-2
   Assets/BicycleModel:
     type: git
-    url: git@gitlab.lrz.de:tum-vt/simulation/ModelTemplate.git
+    url: git@github.com:TUM-VT/Sumonity-UnityModelTemplate.git
     version: bicycle
   Assets/CarModel:
     type: git
-    url: git@gitlab.lrz.de:tum-vt/simulation/ModelTemplate.git
+    url: git@github.com:TUM-VT/Sumonity-UnityModelTemplate.git
     version: car
   Assets/BusModel:
     type: git
-    url: git@gitlab.lrz.de:tum-vt/simulation/ModelTemplate.git
+    url: git@github.com:TUM-VT/Sumonity-UnityModelTemplate.git
     version: bus
   Assets/TaxiModel:
     type: git
-    url: git@gitlab.lrz.de:tum-vt/simulation/ModelTemplate.git
+    url: git@github.com:TUM-VT/Sumonity-UnityModelTemplate.git
     version: taxi
   Assets/Sumonity/Sumo/sumoProject:
     type: git
-    url: git@gitlab.lrz.de:tum-vt/simulation/sumo_tum_main_campus.git
-    version: opensource
+    url: git@github.com:TUM-VT/Sumonity-SumoProject.git
+    version: main
   Assets\parkedvehiclespawner:
     type: git
-    url: git@gitlab.lrz.de:tum-vt/simulation/parkedvehiclespawner.git
-    version: opensource
+    url: git@github.com:TUM-VT/Sumonity-ParkedVehicleSpawner.git
+    version: main

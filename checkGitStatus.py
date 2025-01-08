@@ -18,7 +18,7 @@ for dir in os.listdir(assets_dir):
 
         # Check if the output contains "working tree clean"
         if "working tree clean" not in git_status_output:
-            print(f"----> {child_dir} check!")
+            print(f"----------> {child_dir} ----------> check!")
         else:
             print(f"{child_dir} clean!")
 

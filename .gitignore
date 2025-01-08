@@ -85,7 +85,7 @@ crashlytics-build.properties
 
 Assets/3d_model/
 Assets/Sumonity/
-Assets/BicylceModel/
+Assets/BicycleModel/
 Assets/CarModel/
 Assets/BusModel/
 Assets/TaxiModel/
@@ -95,3 +95,4 @@ Assets/parkedvehiclespawner/
 
 speedsLogs.txt
 .vsconfig
+.config

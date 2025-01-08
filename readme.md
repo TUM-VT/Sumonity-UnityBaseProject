@@ -34,7 +34,6 @@ vcs import < assets.repos
 ```
 
 
-
 ### Sumo Python Envrionment Setup
 
 The prompts in this guide refer to git bash and not "powershell" or "cmd"
@@ -43,7 +42,7 @@ Go to The Sumo Folder where the python script for "TraCI" is located:
 
 Setup the envrionment
 ```
-cd Assets/SumoBridge/Sumo
+cd Assets/Sumonity/Sumo
 ```
 
 Install the virtualenvironment toolset
@@ -59,26 +58,20 @@ Set-ExecutionPolicy Unrestricted
 
 Activate it and install dependencies:
 ```
-virtualenv venv
-source ./venv/Scripts/activate
+python3.11 -m venv venv
+.\venv\scripts\activate
 pip install -r requirements.txt
+
 ```
 
+Note: Use Python 3.11, otherwise you will run into compatability issues.
 
-Hint if you run into issues, try to do this part in powershell
+
+Note: 
+If you run into issues, try to do this part in powershell
 
 
 ## Troubleshooting
-
-In unity you have to install the follwoing package:
-
-Window-> Package Manger -> "+" -> add by name:
-```
-com.unity.nuget.newtonsoft-json
-```
-```
-[Bézier Path Creator](https://assetstore.unity.com/packages/tools/utilities/b-zier-path-creator-136082#description)
-```
 
 ### VCS Tool and Win11
 If you have to work with Windows 11, install vcstool2 in a python venv!

@@ -1,8 +1,4 @@
 repositories:
-  Assets/3d_model:
-    type: git
-    url: https://gitlab.lrz.de/tum-gis/tum2twin-datasets.git
-    version: main
   Assets/Sumonity:
     type: git
     url: git@github.com:TUM-VT/Sumonity.git
@@ -27,7 +23,7 @@ repositories:
     type: git
     url: git@github.com:TUM-VT/Sumonity-SumoProject.git
     version: main
-  Assets\parkedvehiclespawner:
+  Assets/parkedvehiclespawner:
     type: git
     url: git@github.com:TUM-VT/Sumonity-ParkedVehicleSpawner.git
     version: main

@@ -33,6 +33,12 @@ vcs import < assets.repos
 
 ```
 
+download the 3d model:
+```
+wget "https://gitlab.lrz.de/tum-gis/tum2twin-datasets/-/raw/0ec6f8d87cfe58ac03bdae2c690632c08fd3d625/fbx/tum_main_campus.fbx" -OutFile "Assets/3d_model/tum_main_campus.fbx"
+```
+
+
 
 ### Sumo Python Envrionment Setup
 

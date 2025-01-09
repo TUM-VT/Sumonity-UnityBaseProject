@@ -2,7 +2,6 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 
-// Remove InitializeOnLoad and handle it differently
 public class PrefabLoader : EditorWindow
 {
     private const string MODEL_PATH = "Assets/3d_model/tum_main_campus.fbx";
@@ -14,24 +13,38 @@ public class PrefabLoader : EditorWindow
     [MenuItem("Tools/Load TUM Campus Model")]
     static void LoadModelMenuItem()
     {
-        LoadModelFromFbx();
+        if (!Application.isPlaying)
+        {
+            LoadModelFromFbx();
+        }
     }
 
-    // Register to scene opening event when Unity starts
     [InitializeOnLoadMethod]
     static void Initialize()
     {
         EditorSceneManager.sceneOpened += OnSceneOpened;
-        EditorApplication.delayCall += LoadModelFromFbx;
+        if (!Application.isPlaying)
+        {
+            EditorApplication.delayCall += LoadModelFromFbx;
+        }
     }
 
     private static void OnSceneOpened(UnityEngine.SceneManagement.Scene scene, OpenSceneMode mode)
     {
-        EditorApplication.delayCall += LoadModelFromFbx;
+        if (!Application.isPlaying)
+        {
+            EditorApplication.delayCall += LoadModelFromFbx;
+        }
     }
 
     private static void LoadModelFromFbx()
     {
+        // Early return if in play mode
+        if (Application.isPlaying)
+        {
+            return;
+        }
+
         UnityEngine.Object fbxModel = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(MODEL_PATH);
         
         if (fbxModel != null)
@@ -60,7 +73,6 @@ public class PrefabLoader : EditorWindow
                 Undo.RegisterCreatedObjectUndo(instance, "Create TUM Campus Model");
                 instance.transform.SetParent(container.transform, false);
                 
-                // Find RoadsNode starting from the container
                 Transform roads = container.transform
                     .Find("tum_main_campus/Tile_0_0Node/RoadsNode");
 
@@ -78,7 +90,11 @@ public class PrefabLoader : EditorWindow
                 }
 
                 Debug.Log($"Successfully loaded model from {MODEL_PATH}");
-                EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+                
+                if (!Application.isPlaying)
+                {
+                    EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+                }
             }
             else
             {

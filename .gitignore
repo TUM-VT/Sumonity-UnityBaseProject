@@ -83,8 +83,10 @@ crashlytics-build.properties
 
 # Exclude other repos from repo list
 
-Assets/3d_model/
+# Assets/3d_model/
 3d_model.meta
+*.fbx
+*.fbx.meta
 Assets/Sumonity/
 Assets/BicycleModel/
 Assets/CarModel/

@@ -1,8 +1,6 @@
 # unity tum main campus
 
-this is the base project for our unity simulations
 
-The setup was done accoroding to https://unityatscale.com/unity-version-control-guide/how-to-setup-unity-project-on-github/
 
 ## Prerequistes
 - Sumo 1.18 (or later, important traci must be the same version)

@@ -46,7 +46,7 @@ Go to The Sumo Folder where the python script for "TraCI" is located:
 
 Setup the envrionment
 ```
-cd Assets/Sumonity/Sumo
+cd Assets/Sumonity/SumoTraCI
 ```
 
 Install the virtualenvironment toolset
@@ -68,12 +68,13 @@ pip install -r requirements.txt
 
 ```
 
-Note: Use Python 3.11, otherwise you will run into compatability issues.
-
-
 Note: 
-If you run into issues, try to do this part in powershell
+- Use Python 3.11, otherwise you will run into compatability issues.
 
+
+## Running the Simulation
+
+Open the project in Unity and run the scene "Main Campus"
 
 ## Troubleshooting
 

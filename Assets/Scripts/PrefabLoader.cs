@@ -59,8 +59,25 @@ public class PrefabLoader : EditorWindow
             {
                 Undo.RegisterCreatedObjectUndo(instance, "Create TUM Campus Model");
                 instance.transform.SetParent(container.transform, false);
-                Debug.Log($"Successfully loaded model from {MODEL_PATH}");
                 
+                // Find RoadsNode starting from the container
+                Transform roads = container.transform
+                    .Find("tum_main_campus/Tile_0_0Node/RoadsNode");
+
+                if (roads != null)
+                {
+                    if (!roads.GetComponent<MeshCollider>())
+                    {
+                        MeshCollider collider = Undo.AddComponent<MeshCollider>(roads.gameObject);
+                        Debug.Log("Successfully added MeshCollider to RoadsNode");
+                    }
+                }
+                else
+                {
+                    Debug.LogError("Could not find path: tum_main_campus/Tile_0_0Node/RoadsNode");
+                }
+
+                Debug.Log($"Successfully loaded model from {MODEL_PATH}");
                 EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             }
             else

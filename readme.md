@@ -3,11 +3,11 @@
 
 
 ## Prerequistes
-- Sumo 1.18 (or later, important traci must be the same version)
-- Windows 10 (Do no use Windows 11)
-- Python 3.11 (or later)
+- Sumo 1.21 (or later, important traci must be the same version)
+- Windows 10/11
+- Python 3.11 
 - Git Bash
-- Unity 2022.3.8f1 (only this version is tested, other version might create errors)
+- Unity 2022.3.8f1 
 
 
 ## installation

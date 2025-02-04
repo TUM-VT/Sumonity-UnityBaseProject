@@ -1,29 +1,29 @@
 repositories:
   Assets/Sumonity:
     type: git
-    url: git@github.com:TUM-VT/Sumonity.git
+    url: https://github.com/TUM-VT/Sumonity.git
     version: dev-version-2
   Assets/BicycleModel:
     type: git
-    url: git@github.com:TUM-VT/Sumonity-UnityModelTemplate.git
+    url: https://github.com/TUM-VT/Sumonity-UnityModelTemplate.git
     version: bicycle
   Assets/CarModel:
     type: git
-    url: git@github.com:TUM-VT/Sumonity-UnityModelTemplate.git
+    url: https://github.com/TUM-VT/Sumonity-UnityModelTemplate.git
     version: car
   Assets/BusModel:
     type: git
-    url: git@github.com:TUM-VT/Sumonity-UnityModelTemplate.git
+    url: https://github.com/TUM-VT/Sumonity-UnityModelTemplate.git
     version: bus
   Assets/TaxiModel:
     type: git
-    url: git@github.com:TUM-VT/Sumonity-UnityModelTemplate.git
+    url: https://github.com/TUM-VT/Sumonity-UnityModelTemplate.git
     version: taxi
   Assets/Sumonity/SumoTraCI/sumoProject:
     type: git
-    url: git@github.com:TUM-VT/Sumonity-SumoProject.git
+    url: https://github.com/TUM-VT/Sumonity-SumoProject.git
     version: main
   Assets/parkedvehiclespawner:
     type: git
-    url: git@github.com:TUM-VT/Sumonity-ParkedVehicleSpawner.git
+    url: https://github.com/TUM-VT/Sumonity-ParkedVehicleSpawner.git
     version: main

@@ -27,3 +27,7 @@ repositories:
     type: git
     url: https://github.com/TUM-VT/Sumonity-ParkedVehicleSpawner.git
     version: main
+  Assets/PedestrianModel:
+    type: git
+    url: https://github.com/TUM-VT/Sumonity-PedestrianModel.git
+    version: main

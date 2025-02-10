@@ -95,6 +95,7 @@ Assets/TaxiModel/
 Assets/#Data/*
 !Assets/#Data/.gitkeep 
 Assets/parkedvehiclespawner/
+Assets/PedestrianModel/
 
 speedsLogs.txt
 .vsconfig

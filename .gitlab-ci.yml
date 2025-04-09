@@ -17,7 +17,7 @@ before_script:
 run_tests:
   stage: test
   tags:
-    - sumonity
+    - Windows
   script:
     # Execute the setup script
     - powershell -File setup.ps1

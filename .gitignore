@@ -100,3 +100,5 @@ Assets/PedestrianModel/
 speedsLogs.txt
 .vsconfig
 .config
+*.log
+*.csv

@@ -15,6 +15,7 @@ TagManager:
   - BusTrigger
   - BusPrefab
   - Person
+  - Vehicle
   layers:
   - Default
   - TransparentFX

@@ -1,0 +1,33 @@
+image: mcr.microsoft.com/windows/servercore:ltsc2019
+
+stages:
+  - test
+
+variables:
+  # Git clone strategy
+  GIT_STRATEGY: clone
+  GIT_DEPTH: 0
+  # Unity path - this might need to be adjusted based on the runner configuration
+  UNITY_PATH: "C:\\Program Files\\Unity\\Hub\\Editor\\2022.3.8f1\\Editor\\Unity.exe"
+
+before_script:
+  # Ensure PowerShell execution policy allows for script execution
+  - powershell -Command "Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope Process -Force"
+
+run_tests:
+  only:
+    - main
+    - ssh\dev-install-script
+  stage: test
+  tags:
+    - Windows
+  script:
+    # Execute the setup script
+    - powershell -File setup.ps1
+    # Execute the automated scene runner
+    - powershell -File run_scene_automated.ps1 -UnityPath "$UNITY_PATH" -TimeToRun 120
+  artifacts:
+    paths:
+      - unity_test_run.log
+      - vehicle_position_comparison.csv
+    expire_in: 1 week 

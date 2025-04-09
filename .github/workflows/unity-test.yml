@@ -2,7 +2,7 @@ name: Unity Tests
 
 on:
   push:
-    branches: [ main, 'ssh\dev-install-script' ]
+    branches: [ main, 'dev-install-script' ]
 
 jobs:
   run-tests:
@@ -27,7 +27,7 @@ jobs:
         shell: powershell
         
       - name: Upload test artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: |

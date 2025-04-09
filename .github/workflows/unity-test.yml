@@ -27,8 +27,35 @@ jobs:
         run: .\setup.ps1
         shell: powershell
         
+      - name: Check Unity installation path
+        run: |
+          $UnityPath="C:\Program Files\Unity\Hub\Editor\2022.3.8f1\Editor\Unity.exe"
+          if (Test-Path $UnityPath) {
+            Write-Host "Unity executable found at $UnityPath"
+          } else {
+            Write-Host "Unity executable not found, checking other locations..."
+            $unityInstallations = Get-ChildItem "C:\Program Files\Unity\Hub\Editor\" -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer }
+            
+            if ($unityInstallations -and $unityInstallations.Count -gt 0) {
+              foreach ($dir in $unityInstallations) {
+                $testPath = Join-Path $dir.FullName "Editor\Unity.exe"
+                if (Test-Path $testPath) {
+                  Write-Host "Found Unity at: $testPath"
+                  $UnityPath = $testPath
+                  break
+                }
+              }
+            }
+            
+            if (-not (Test-Path $UnityPath)) {
+              Write-Host "No Unity installation found, the test will fail."
+            }
+          }
+          echo "UNITY_PATH=$UnityPath" >> $env:GITHUB_ENV
+        shell: powershell
+        
       - name: Run Unity tests
-        run: .\run_scene_automated.ps1 -UnityPath "C:\Program Files\Unity\Hub\Editor\2022.3.8f1\Editor\Unity.exe" -TimeToRun 120
+        run: .\run_scene_automated.ps1 -UnityPath "${{ env.UNITY_PATH }}" -TimeToRun 120
         shell: powershell
         
       - name: Upload test artifacts

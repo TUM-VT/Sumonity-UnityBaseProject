@@ -1,0 +1,36 @@
+name: Unity Tests
+
+on:
+  push:
+    branches: [ main, 'ssh\dev-install-script' ]
+
+jobs:
+  run-tests:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          
+      - name: Set PowerShell execution policy
+        run: Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope Process -Force
+        shell: powershell
+        
+      - name: Execute setup script
+        run: .\setup.ps1
+        shell: powershell
+        
+      - name: Run Unity tests
+        run: .\run_scene_automated.ps1 -UnityPath "C:\Program Files\Unity\Hub\Editor\2022.3.8f1\Editor\Unity.exe" -TimeToRun 120
+        shell: powershell
+        
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: |
+            unity_test_run.log
+            vehicle_position_comparison.csv
+          retention-days: 7 

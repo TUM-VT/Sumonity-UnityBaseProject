@@ -1,94 +1,78 @@
 # Automated script to open and run a Unity scene in batch mode
 param (
-    [string]$UnityPath = "C:\Program Files\Unity\Hub\Editor\2022.3.8f1\Editor\Unity.exe", # Update with your Unity version
+    [string]$UnityPath = "C:\Program Files\Unity\Hub\Editor\2022.3.8f1\Editor\Unity.exe",
     [string]$ScenePath = "Assets/Scenes/MainScene.unity",
     [string]$LogFile = "unity_test_run.log",
-    [int]$TimeToRun = 60, # Time in seconds to let the scene run before closing
-    [switch]$ForceCleanup = $true, # Force cleanup of existing Unity processes
-    [switch]$ScreenMode = $false  # New parameter for screen mode
+    [int]$TimeToRun = 60,
+    [switch]$ForceCleanup = $true,
+    [switch]$ScreenMode = $false,
+    [switch]$VehiclePositionComparison = $true,
+    [string]$PositionComparisonFile = "vehicle_position_comparison.csv",
+    [double]$ErrorThreshold = 2.0
 )
+
+Write-Host "Starting Unity scene automation script..." -ForegroundColor Cyan
 
 # Function to check for and clean up any existing Unity processes
 function Cleanup-UnityProcesses {
     param(
-        [bool]$Force = $false,
-        [string]$ProjectName = ""
+        [bool]$Force = $false
     )
     
-    # Get absolute path to identify our project
+    Write-Host "Checking for existing Unity processes..." -ForegroundColor Yellow
     $ProjectPath = Resolve-Path "."
-    $ProjectName = Split-Path $ProjectPath -Leaf
-    
-    Write-Host "Checking for existing Unity processes..." -ForegroundColor Cyan
     $unityProcesses = Get-Process -Name "Unity" -ErrorAction SilentlyContinue
     
     if ($unityProcesses -and $unityProcesses.Count -gt 0) {
-        Write-Host "Found $($unityProcesses.Count) Unity process(es) running." -ForegroundColor Yellow
-        
+        Write-Host "Found $($unityProcesses.Count) running Unity process(es)" -ForegroundColor Yellow
         if ($Force) {
-            Write-Host "Stopping all Unity processes..." -ForegroundColor Yellow
+            Write-Host "Force cleaning up Unity processes..." -ForegroundColor Yellow
             foreach ($proc in $unityProcesses) {
-                Write-Host "  Stopping Unity process with ID: $($proc.Id)" -ForegroundColor Yellow
                 Stop-Process -Id $proc.Id -Force
             }
-            Write-Host "All Unity processes stopped." -ForegroundColor Green
             
-            # Also clean up Temp directory to remove any lock files
+            # Clean up Temp directory
             $tempPath = Join-Path $ProjectPath "Temp"
             if (Test-Path $tempPath) {
                 Write-Host "Cleaning up Temp directory..." -ForegroundColor Yellow
-                try {
-                    Remove-Item -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue
-                    Write-Host "Temp directory cleaned." -ForegroundColor Green
-                } catch {
-                    Write-Host "Warning: Could not fully clean Temp directory. Some files may be locked." -ForegroundColor Yellow
-                }
+                Remove-Item -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue
             }
             
-            # Wait a moment for processes to fully terminate
             Start-Sleep -Seconds 2
-        } else {
-            Write-Host "Warning: Unity processes are running. This might cause conflicts." -ForegroundColor Yellow
-            Write-Host "Use -ForceCleanup parameter to automatically terminate Unity processes." -ForegroundColor Yellow
         }
     } else {
-        Write-Host "No Unity processes found. Continuing..." -ForegroundColor Green
+        Write-Host "No existing Unity processes found" -ForegroundColor Green
     }
 }
 
 # Run cleanup check
+Write-Host "Running initial cleanup check..." -ForegroundColor Cyan
 Cleanup-UnityProcesses -Force $ForceCleanup
 
 # Check if Unity path exists
+Write-Host "Verifying Unity executable path..." -ForegroundColor Cyan
 if (-not (Test-Path $UnityPath)) {
     Write-Host "Error: Unity executable not found at $UnityPath" -ForegroundColor Red
-    Write-Host "Please update the UnityPath parameter to point to your Unity installation" -ForegroundColor Yellow
     exit 1
 }
+Write-Host "Unity executable found at $UnityPath" -ForegroundColor Green
 
 # Get the absolute path to the Unity project
 $ProjectPath = Resolve-Path "."
+Write-Host "Project path: $ProjectPath" -ForegroundColor Cyan
 
-# Additional cleanup - specifically target certain lock files
+# Additional cleanup - specifically target lock files
+Write-Host "Checking for Unity lock files..." -ForegroundColor Cyan
 $tempPath = Join-Path $ProjectPath "Temp"
 $editorLockFile = Join-Path $tempPath "UnityLockfile"
 
 if (Test-Path $editorLockFile) {
-    Write-Host "Found Unity lock file. Removing..." -ForegroundColor Yellow
-    try {
-        Remove-Item -Path $editorLockFile -Force -ErrorAction SilentlyContinue
-        Write-Host "Unity lock file removed." -ForegroundColor Green
-    } catch {
-        Write-Host "Warning: Could not remove Unity lock file. You may need to restart your computer." -ForegroundColor Red
-    }
+    Write-Host "Removing Unity lock file..." -ForegroundColor Yellow
+    Remove-Item -Path $editorLockFile -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "Starting Unity in batch mode to run scene: $ScenePath" -ForegroundColor Cyan
-Write-Host "Unity executable: $UnityPath" -ForegroundColor Cyan
-Write-Host "Project path: $ProjectPath" -ForegroundColor Cyan
-Write-Host "Test will run for $TimeToRun seconds" -ForegroundColor Cyan
-
 # Run Unity in screen mode
+Write-Host "Starting Unity process..." -ForegroundColor Cyan
 $process = Start-Process -FilePath $UnityPath `
                          -ArgumentList "-projectPath", "`"$ProjectPath`"", "-logFile", "`"$LogFile`"", "-executeMethod", "AutomatedTesting.RunMainSceneTest" `
                          -PassThru
@@ -97,91 +81,138 @@ if ($null -eq $process) {
     Write-Host "Error: Failed to start Unity process." -ForegroundColor Red
     exit 1
 }
+Write-Host "Unity process started successfully (PID: $($process.Id))" -ForegroundColor Green
 
-Write-Host "Unity process started with ID: $($process.Id)" -ForegroundColor Green
-
-# Wait a few seconds to check if process is still running (detect early crashes)
+# Wait a few seconds to check if process is still running
+Write-Host "Waiting for Unity process to initialize..." -ForegroundColor Cyan
 Start-Sleep -Seconds 5
 if ($process.HasExited) {
-    Write-Host "Error: Unity process exited unexpectedly. Check the log file for details." -ForegroundColor Red
-    Analyze-LogFile -LogFilePath $LogFile
+    Write-Host "Error: Unity process exited unexpectedly." -ForegroundColor Red
     exit 1
 }
+Write-Host "Unity process is running" -ForegroundColor Green
 
 # Wait for the specified time
-Write-Host "Waiting for $TimeToRun seconds while the scene runs..." -ForegroundColor Yellow
+Write-Host "Running scene for $TimeToRun seconds..." -ForegroundColor Cyan
 Start-Sleep -Seconds $TimeToRun
 
 # Kill the Unity process after the specified time
-Write-Host "Time elapsed. Stopping Unity process..." -ForegroundColor Yellow
+Write-Host "Stopping Unity process..." -ForegroundColor Cyan
 Stop-Process -Id $process.Id -Force
+Write-Host "Unity process stopped" -ForegroundColor Green
 
-Write-Host "Test completed. Check $LogFile for details." -ForegroundColor Green
-
-# Function to parse the log file for errors or specific test results
+# Function to parse the log file for errors
 function Analyze-LogFile {
     param (
         [string]$LogFilePath
     )
     
+    Write-Host "Analyzing log file..." -ForegroundColor Cyan
     if (Test-Path $LogFilePath) {
         $content = Get-Content $LogFilePath
-        
-        # Count errors
         $errorCount = ($content | Select-String -Pattern "ERROR" -CaseSensitive).Count
         
-        Write-Host "Log Analysis:" -ForegroundColor Cyan
-        Write-Host "- Total lines: $($content.Count)" -ForegroundColor Cyan
-        Write-Host "- Error count: $errorCount" -ForegroundColor $(if ($errorCount -gt 0) {"Red"} else {"Green"})
-        
-        # Show the last few lines which might contain test results
-        Write-Host "Last 10 lines of log:" -ForegroundColor Cyan
-        $content | Select-Object -Last 10
+        if ($errorCount -gt 0) {
+            Write-Host "Found $errorCount errors in log file" -ForegroundColor Red
+        } else {
+            Write-Host "No errors found in log file" -ForegroundColor Green
+        }
     } else {
-        Write-Host "Log file not found at $LogFilePath" -ForegroundColor Red
+        Write-Host "Log file not found at $LogFilePath" -ForegroundColor Yellow
     }
 }
 
 # Analyze the log after completion
 Analyze-LogFile -LogFilePath $LogFile
 
-# Check for test results file
-$testResultsFile = "automated_test_results.log"
-$possiblePaths = @(
-    "$testResultsFile",  # Current directory
-    "Assets/$testResultsFile",  # Assets folder
-    "$env:TEMP\$testResultsFile",  # Temp directory
-    "$env:USERPROFILE\Desktop\$testResultsFile"  # Desktop
-)
-
-$resultsFound = $false
-foreach ($path in $possiblePaths) {
-    if (Test-Path $path) {
-        Write-Host "`nAutomated Test Results found at: $path" -ForegroundColor Green
-        Get-Content $path | Select-Object -Last 10
-        $resultsFound = $true
-        break
-    }
-}
-
-if (-not $resultsFound) {
-    Write-Host "No test results file found in any expected location" -ForegroundColor Yellow
+# Function to evaluate position comparison data
+function Evaluate-PositionComparisonData {
+    param (
+        [string]$FilePath,
+        [double]$Threshold
+    )
     
-    # Search log file for clues about why the test results file wasn't created
-    if (Test-Path $LogFile) {
-        Write-Host "Searching log for automated testing messages..." -ForegroundColor Yellow
-        $testingMessages = Get-Content $LogFile | Select-String -Pattern "AutomatedTesting|Test completed|Performance Test Results|test_results.log" -Context 0,1
-        
-        if ($testingMessages -and $testingMessages.Count -gt 0) {
-            Write-Host "Found $($testingMessages.Count) testing-related log entries:" -ForegroundColor Cyan
-            foreach ($msg in $testingMessages) {
-                Write-Host $msg -ForegroundColor Cyan
+    Write-Host "Evaluating vehicle position comparison data..." -ForegroundColor Cyan
+    if (Test-Path $FilePath) {
+        try {
+            $data = Import-Csv -Path $FilePath
+            $avgErrorCol = $data | Where-Object { $_.PSObject.Properties.Name -contains "AverageError" }
+            
+            if ($avgErrorCol) {
+                # Find the AverageError value - could be in different formats depending on CSV structure
+                $avgError = $null
+                if ($data[-1].AverageError) {
+                    # If AverageError is a direct column
+                    $avgError = [double]$data[-1].AverageError
+                } elseif ($data.AverageError) {
+                    # If CSV has just one row with stats
+                    $avgError = [double]$data.AverageError
+                }
+                
+                if ($null -ne $avgError) {
+                    Write-Host "Average position error: $avgError meters" -ForegroundColor Cyan
+                    
+                    # Check for individual passenger vehicles exceeding the threshold
+                    $passengersOverThreshold = $data | Where-Object { 
+                        $_.VehicleType -like "*passenger*" -and 
+                        [double]($_.AverageError -replace ',', '.') -gt $Threshold 
+                    }
+                    
+                    if ($passengersOverThreshold -and $passengersOverThreshold.Count -gt 0) {
+                        Write-Host "ERROR: Found $($passengersOverThreshold.Count) passenger vehicle(s) with average error exceeding threshold of $Threshold meters" -ForegroundColor Red
+                        foreach ($vehicle in $passengersOverThreshold) {
+                            Write-Host "  - Vehicle $($vehicle.VehicleID): Average error = $($vehicle.AverageError) meters" -ForegroundColor Red
+                        }
+                        return $false
+                    }
+                    
+                    if ($avgError -gt $Threshold) {
+                        Write-Host "ERROR: Average position error ($avgError m) exceeds threshold of $Threshold meters" -ForegroundColor Red
+                        return $false
+                    } else {
+                        Write-Host "Position accuracy is within acceptable limits" -ForegroundColor Green
+                        return $true
+                    }
+                } else {
+                    Write-Host "Could not find AverageError value in the CSV file" -ForegroundColor Yellow
+                    return $null
+                }
+            } else {
+                Write-Host "AverageError column not found in the position comparison data" -ForegroundColor Yellow
+                return $null
             }
-        } else {
-            Write-Host "No testing log messages found. The test may not have run properly." -ForegroundColor Red
         }
+        catch {
+            Write-Host "Error parsing position comparison data: $_" -ForegroundColor Red
+            return $null
+        }
+    } else {
+        Write-Host "Position comparison file not found at $FilePath" -ForegroundColor Yellow
+        return $null
     }
 }
 
-# If you want to run specific tests, you could set up an editor script in Unity that's invoked with the -executeMethod parameter
-# Example: "-executeMethod", "TestRunner.RunAutomatedTests" 
+# Check for vehicle position comparison results
+if ($VehiclePositionComparison) {
+    Write-Host "Checking for vehicle position comparison results..." -ForegroundColor Cyan
+    $positionFile = Join-Path $ProjectPath $PositionComparisonFile
+    if (Test-Path $positionFile) {
+        Write-Host "Vehicle position comparison data saved to $positionFile" -ForegroundColor Green
+        
+        # Evaluate the position data
+        $evalResult = Evaluate-PositionComparisonData -FilePath $positionFile -Threshold $ErrorThreshold
+        
+        if ($evalResult -eq $false) {
+            Write-Host "Position comparison test FAILED" -ForegroundColor Red
+            exit 1  # Exit with error code for pipeline integration
+        } elseif ($evalResult -eq $true) {
+            Write-Host "Position comparison test PASSED" -ForegroundColor Green
+        } else {
+            Write-Host "Position comparison test INCONCLUSIVE" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "No vehicle position comparison data found" -ForegroundColor Yellow
+    }
+}
+
+Write-Host "Script execution completed" -ForegroundColor Cyan 

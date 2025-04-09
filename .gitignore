@@ -101,3 +101,4 @@ speedsLogs.txt
 .vsconfig
 .config
 *.log
+*.csv

@@ -15,6 +15,9 @@ before_script:
   - powershell -Command "Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Scope Process -Force"
 
 run_tests:
+  only:
+    - main
+    - ssh\dev-install-script
   stage: test
   tags:
     - Windows

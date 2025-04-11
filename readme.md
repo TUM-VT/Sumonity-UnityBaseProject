@@ -9,8 +9,21 @@
 - Git Bash
 - Unity 2022.3.8f1 
 
+## Automatic installation
 
-## installation
+Clone the repo:
+```
+git clone https://github.com/TUM-VT/Sumonity-UnityBaseProject.git
+```
+
+Execute the install script in Powershell as Admin:
+```
+./setup.ps1
+```
+
+## Manual installation
+
+
 
 ### Repo Setup
 

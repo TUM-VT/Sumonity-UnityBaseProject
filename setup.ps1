@@ -1,6 +1,6 @@
 # Automated setup script for TUM Main Campus Unity Project
 
-Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope CurrentUser
 
 # Ensure script is running with administrator privileges
 if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {

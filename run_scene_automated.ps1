@@ -211,7 +211,9 @@ if ($VehiclePositionComparison) {
             Write-Host "Position comparison test INCONCLUSIVE" -ForegroundColor Yellow
         }
     } else {
-        Write-Host "No vehicle position comparison data found" -ForegroundColor Yellow
+        Write-Host "No vehicle position comparison data found" -ForegroundColor Red
+        Write-Host "Position comparison test FAILED - No data available" -ForegroundColor Red
+        exit 1  # Exit with error code for pipeline integration
     }
 }
 

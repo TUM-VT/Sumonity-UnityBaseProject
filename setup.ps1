@@ -167,7 +167,7 @@ if (-not (Test-Path "Assets/3d_model")) {
 
 # Download 3D model
 Write-Host "Downloading 3D model..."
-# Invoke-WebRequest -Uri "https://gitlab.lrz.de/tum-gis/tum2twin-datasets/-/raw/0ec6f8d87cfe58ac03bdae2c690632c08fd3d625/fbx/tum_main_campus.fbx" -OutFile "Assets/3d_model/tum_main_campus.fbx"
+Invoke-WebRequest -Uri "https://gitlab.lrz.de/tum-gis/tum2twin-datasets/-/raw/0ec6f8d87cfe58ac03bdae2c690632c08fd3d625/fbx/tum_main_campus.fbx" -OutFile "Assets/3d_model/tum_main_campus.fbx"
 
 # Setup Sumo Python environment
 Write-Host "Setting up Sumo Python environment..."

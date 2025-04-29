@@ -195,6 +195,7 @@ if ($BypassInitCheck) {
     Write-Host "Bypassing Unity initialization check as requested" -ForegroundColor Yellow
     $initialized = $true
 } else {
+    Write-Host "Using LogFilePath: $LogFilePath" -ForegroundColor Cyan
     $initialized = Wait-ForUnityInitialization -LogFilePath $LogFilePath
 }
 

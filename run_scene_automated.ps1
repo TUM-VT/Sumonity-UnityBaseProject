@@ -83,6 +83,78 @@ if ($null -eq $process) {
 }
 Write-Host "Unity process started successfully (PID: $($process.Id))" -ForegroundColor Green
 
+# Function to check Unity initialization status
+function Test-UnityInitialization {
+    param (
+        [string]$LogFilePath
+    )
+    
+    if (-not (Test-Path $LogFilePath)) {
+        return $false
+    }
+    
+    $logContent = Get-Content $LogFilePath -Tail 100
+    $initializationComplete = $false
+    $sceneLoaded = $false
+    $errorsFound = $false
+    
+    # Check for initialization sequence
+    foreach ($line in $logContent) {
+        if ($line -match "Initialize engine version") {
+            $initializationComplete = $true
+        }
+        if ($line -match "Loading scene") {
+            $sceneLoaded = $true
+        }
+        if ($line -match "ERROR" -or $line -match "Exception") {
+            $errorsFound = $true
+            Write-Host "Found error in Unity log: $line" -ForegroundColor Red
+        }
+    }
+    
+    # Check for specific Unity ready indicators
+    $readyIndicators = @(
+        "Unity Editor is ready",
+        "Scene loaded successfully",
+        "All packages loaded",
+        "Project loaded successfully"
+    )
+    
+    $readyCount = 0
+    foreach ($indicator in $readyIndicators) {
+        if ($logContent -match $indicator) {
+            $readyCount++
+        }
+    }
+    
+    # Return true only if we have both initialization and scene loading complete,
+    # no errors found, and at least 2 ready indicators
+    return ($initializationComplete -and $sceneLoaded -and -not $errorsFound -and $readyCount -ge 2)
+}
+
+# Function to wait for Unity to fully initialize
+function Wait-ForUnityInitialization {
+    param (
+        [string]$LogFilePath,
+        [int]$TimeoutSeconds = 300  # 5 minutes timeout
+    )
+    
+    Write-Host "Waiting for Unity to fully initialize..." -ForegroundColor Cyan
+    $startTime = Get-Date
+    $timeout = $startTime.AddSeconds($TimeoutSeconds)
+    
+    while ((Get-Date) -lt $timeout) {
+        if (Test-UnityInitialization -LogFilePath $LogFilePath) {
+            Write-Host "Unity initialization completed successfully" -ForegroundColor Green
+            return $true
+        }
+        Start-Sleep -Seconds 2
+    }
+    
+    Write-Host "Timeout waiting for Unity initialization" -ForegroundColor Red
+    return $false
+}
+
 # Wait a few seconds to check if process is still running
 Write-Host "Waiting for Unity process to initialize..." -ForegroundColor Cyan
 Start-Sleep -Seconds 5
@@ -91,6 +163,14 @@ if ($process.HasExited) {
     exit 1
 }
 Write-Host "Unity process is running" -ForegroundColor Green
+
+# Wait for Unity to fully initialize
+$initialized = Wait-ForUnityInitialization -LogFilePath $LogFile
+if (-not $initialized) {
+    Write-Host "Error: Unity failed to initialize within timeout period" -ForegroundColor Red
+    Stop-Process -Id $process.Id -Force
+    exit 1
+}
 
 # Wait for the specified time
 Write-Host "Running scene for $TimeToRun seconds..." -ForegroundColor Cyan

@@ -280,8 +280,8 @@ function Evaluate-PositionComparisonData {
             $data = Import-Csv -Path $FilePath
             
             # Filter out entries below the time threshold if the data has timestamps
-            if ($data.Count -gt 0 -and $data[0].PSObject.Properties.Name -contains "Time") {
-                $filteredData = $data | Where-Object { [double]($_.Time -replace ',', '.') -ge $TimeThreshold }
+            if ($data.Count -gt 0 -and $data[0].PSObject.Properties.Name -contains "Timestamp") {
+                $filteredData = $data | Where-Object { [double]($_.Timestamp -replace ',', '.') -ge $TimeThreshold }
                 if ($filteredData.Count -eq 0) {
                     Write-Host "No data points found above the time threshold of $TimeThreshold seconds" -ForegroundColor Yellow
                     return $null
@@ -289,7 +289,7 @@ function Evaluate-PositionComparisonData {
                 Write-Host "Filtered from $($data.Count) to $($filteredData.Count) data points after applying time threshold" -ForegroundColor Cyan
                 $data = $filteredData
             } else {
-                Write-Host "Time column not found in data, cannot apply time threshold" -ForegroundColor Yellow
+                Write-Host "Timestamp column not found in data, cannot apply time threshold" -ForegroundColor Yellow
             }
             
             $avgErrorCol = $data | Where-Object { $_.PSObject.Properties.Name -contains "AverageError" }

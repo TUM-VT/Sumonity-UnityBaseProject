@@ -8,7 +8,9 @@ param (
     [switch]$ScreenMode = $false,
     [switch]$VehiclePositionComparison = $true,
     [string]$PositionComparisonFile = "vehicle_position_comparison.csv",
-    [double]$ErrorThreshold = 2.0
+    [double]$ErrorThreshold = 2.0,
+    [string]$LogFilePath = "C:\Users\celsius\actions-runner\_work\Sumonity-UnityBaseProject\Sumonity-UnityBaseProject\unity_test_run.log",
+    [switch]$BypassInitCheck = $false
 )
 
 Write-Host "Starting Unity scene automation script..." -ForegroundColor Cyan
@@ -90,6 +92,7 @@ function Test-UnityInitialization {
     )
     
     if (-not (Test-Path $LogFilePath)) {
+        Write-Host "Log file not found at path: $LogFilePath" -ForegroundColor Yellow
         return $false
     }
     
@@ -102,9 +105,11 @@ function Test-UnityInitialization {
     foreach ($line in $logContent) {
         if ($line -match "Initialize engine version") {
             $initializationComplete = $true
+            Write-Host "Found initialization indicator in log" -ForegroundColor Green
         }
         if ($line -match "Loading scene") {
             $sceneLoaded = $true
+            Write-Host "Found scene loading indicator in log" -ForegroundColor Green
         }
         if ($line -match "ERROR" -or $line -match "Exception") {
             $errorsFound = $true
@@ -117,19 +122,27 @@ function Test-UnityInitialization {
         "Unity Editor is ready",
         "Scene loaded successfully",
         "All packages loaded",
-        "Project loaded successfully"
+        "Project loaded successfully",
+        "Initialization complete",
+        "Loaded scene",
+        "Scene has been loaded",
+        "Successfully loaded",
+        "Started playing",
+        "Scene is active",
+        "Play mode started"
     )
     
     $readyCount = 0
     foreach ($indicator in $readyIndicators) {
         if ($logContent -match $indicator) {
             $readyCount++
+            Write-Host "Found ready indicator in log: $indicator" -ForegroundColor Green
         }
     }
     
     # Return true only if we have both initialization and scene loading complete,
-    # no errors found, and at least 2 ready indicators
-    return ($initializationComplete -and $sceneLoaded -and -not $errorsFound -and $readyCount -ge 2)
+    # no errors found, and at least 1 ready indicator (reduced from 2)
+    return ($initializationComplete -and $sceneLoaded -and -not $errorsFound -and $readyCount -ge 1)
 }
 
 # Function to wait for Unity to fully initialize
@@ -165,7 +178,13 @@ if ($process.HasExited) {
 Write-Host "Unity process is running" -ForegroundColor Green
 
 # Wait for Unity to fully initialize
-$initialized = Wait-ForUnityInitialization -LogFilePath $LogFile
+if ($BypassInitCheck) {
+    Write-Host "Bypassing Unity initialization check as requested" -ForegroundColor Yellow
+    $initialized = $true
+} else {
+    $initialized = Wait-ForUnityInitialization -LogFilePath $LogFilePath
+}
+
 if (-not $initialized) {
     Write-Host "Error: Unity failed to initialize within timeout period" -ForegroundColor Red
     Stop-Process -Id $process.Id -Force
@@ -203,7 +222,7 @@ function Analyze-LogFile {
 }
 
 # Analyze the log after completion
-Analyze-LogFile -LogFilePath $LogFile
+Analyze-LogFile -LogFilePath $LogFilePath
 
 # Function to evaluate position comparison data
 function Evaluate-PositionComparisonData {

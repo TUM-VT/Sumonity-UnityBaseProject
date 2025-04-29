@@ -55,7 +55,7 @@ jobs:
         shell: powershell
         
       - name: Run Unity tests
-        run: .\run_scene_automated.ps1 -UnityPath "${{ env.UNITY_PATH }}" -TimeToRun 120
+        run: .\run_scene_automated.ps1 -UnityPath "${{ env.UNITY_PATH }}" -TimeToRun 120 -LogFilePath "${{ github.workspace }}\unity_test_run.log" -BypassInitCheck:$false
         shell: powershell
         
       - name: Upload test artifacts

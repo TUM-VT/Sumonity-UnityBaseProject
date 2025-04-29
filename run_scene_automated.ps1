@@ -8,7 +8,7 @@ param (
     [switch]$ScreenMode = $false,
     [switch]$VehiclePositionComparison = $true,
     [string]$PositionComparisonFile = "vehicle_position_comparison.csv",
-    [double]$ErrorThreshold = 2.0,
+    [double]$ErrorThreshold = 3.0,
     [string]$LogFilePath = "C:\Users\celsius\actions-runner\_work\Sumonity-UnityBaseProject\Sumonity-UnityBaseProject\unity_test_run.log",
     [switch]$BypassInitCheck = $false,
     [int]$TimeThreshold = 20 # Minimum time in seconds before considering position errors

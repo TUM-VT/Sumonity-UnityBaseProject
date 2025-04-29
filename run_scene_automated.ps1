@@ -75,7 +75,9 @@ if (Test-Path $editorLockFile) {
 Write-Host "Starting Unity process..." -ForegroundColor Cyan
 $process = Start-Process -FilePath $UnityPath `
                          -ArgumentList "-projectPath", "`"$ProjectPath`"", "-logFile", "`"$LogFile`"", "-executeMethod", "AutomatedTesting.RunMainSceneTest" `
-                         -PassThru
+                         -PassThru `
+                         -UseShellExecute `
+                         -WindowStyle Normal
 
 if ($null -eq $process) {
     Write-Host "Error: Failed to start Unity process." -ForegroundColor Red

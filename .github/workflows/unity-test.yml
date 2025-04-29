@@ -4,6 +4,9 @@ on:
   push:
     branches: [ main, 'dev-ci-testing' ]
 
+env:
+  BYPASS_UNITY_INIT: false  # Set to 'true' to bypass initialization check if needed
+
 jobs:
   run-tests:
     runs-on: self-hosted
@@ -55,7 +58,7 @@ jobs:
         shell: powershell
         
       - name: Run Unity tests
-        run: .\run_scene_automated.ps1 -UnityPath "${{ env.UNITY_PATH }}" -TimeToRun 120 -LogFilePath "${{ github.workspace }}\unity_test_run.log" -BypassInitCheck:$false
+        run: .\run_scene_automated.ps1 -UnityPath "${{ env.UNITY_PATH }}" -TimeToRun 120 -LogFilePath "${{ github.workspace }}\unity_test_run.log" -BypassInitCheck:${{ env.BYPASS_UNITY_INIT }}
         shell: powershell
         
       - name: Upload test artifacts

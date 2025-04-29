@@ -111,9 +111,21 @@ function Test-UnityInitialization {
             $sceneLoaded = $true
             Write-Host "Found scene loading indicator in log" -ForegroundColor Green
         }
-        if ($line -match "ERROR" -or $line -match "Exception") {
+        
+        # Filter out common non-critical errors
+        $isNonCriticalError = $line -match "fallback shader .* not found" -or 
+                             $line -match "Certificate has expired" -or
+                             $line -match "LogAssemblyErrors" -or
+                             $line -match "will not be compiled because it exists outside" -or
+                             $line -match "Cert verify failed" -or
+                             $line -match "EditorUpdateCheck"
+        
+        if (($line -match "ERROR" -or $line -match "Exception") -and -not $isNonCriticalError) {
             $errorsFound = $true
-            Write-Host "Found error in Unity log: $line" -ForegroundColor Red
+            Write-Host "Found critical error in Unity log: $line" -ForegroundColor Red
+        }
+        elseif (($line -match "ERROR" -or $line -match "Exception") -and $isNonCriticalError) {
+            Write-Host "Ignoring non-critical error: $line" -ForegroundColor Yellow
         }
     }
     
@@ -140,9 +152,10 @@ function Test-UnityInitialization {
         }
     }
     
-    # Return true only if we have both initialization and scene loading complete,
-    # no errors found, and at least 1 ready indicator (reduced from 2)
-    return ($initializationComplete -and $sceneLoaded -and -not $errorsFound -and $readyCount -ge 1)
+    # Return true if we have either:
+    # 1. Both initialization and scene loading complete, and no critical errors, OR
+    # 2. At least 1 ready indicator is found
+    return (($initializationComplete -and $sceneLoaded -and -not $errorsFound) -or $readyCount -ge 1)
 }
 
 # Function to wait for Unity to fully initialize

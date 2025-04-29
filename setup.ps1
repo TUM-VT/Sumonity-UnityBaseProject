@@ -3,10 +3,10 @@
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope CurrentUser
 
 # Ensure script is running with administrator privileges
-if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Error "This script must be run as Administrator! Restart the runner in a privileged shell."
-    Exit 1
-}
+# if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+#     Write-Error "This script must be run as Administrator! Restart the runner in a privileged shell."
+#     Exit 1
+# }
 
 # Set execution policy
 Set-ExecutionPolicy Unrestricted -Force

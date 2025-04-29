@@ -2,7 +2,7 @@ name: Unity Tests
 
 on:
   push:
-    branches: [ main, 'dev-install-script' ]
+    branches: [ main, 'dev-ci-testing' ]
 
 jobs:
   run-tests:

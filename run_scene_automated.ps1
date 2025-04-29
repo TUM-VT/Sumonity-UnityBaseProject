@@ -13,77 +13,65 @@ param (
     [switch]$BypassInitCheck = $false
 )
 
-Write-Host "Starting Unity scene automation script..." -ForegroundColor Cyan
+# Simple progress indicator
+Write-Host "--- Unity Scene Test Automation ---" -ForegroundColor Cyan
 
-# Function to check for and clean up any existing Unity processes
+# Function to check for and clean up any existing Unity processes (simplified output)
 function Cleanup-UnityProcesses {
     param(
         [bool]$Force = $false
     )
     
-    Write-Host "Checking for existing Unity processes..." -ForegroundColor Yellow
-    $ProjectPath = Resolve-Path "."
     $unityProcesses = Get-Process -Name "Unity" -ErrorAction SilentlyContinue
     
     if ($unityProcesses -and $unityProcesses.Count -gt 0) {
-        Write-Host "Found $($unityProcesses.Count) running Unity process(es)" -ForegroundColor Yellow
+        Write-Host "Cleaning up $($unityProcesses.Count) existing Unity process(es)..." -ForegroundColor Yellow
         if ($Force) {
-            Write-Host "Force cleaning up Unity processes..." -ForegroundColor Yellow
             foreach ($proc in $unityProcesses) {
                 Stop-Process -Id $proc.Id -Force
             }
             
             # Clean up Temp directory
+            $ProjectPath = Resolve-Path "."
             $tempPath = Join-Path $ProjectPath "Temp"
             if (Test-Path $tempPath) {
-                Write-Host "Cleaning up Temp directory..." -ForegroundColor Yellow
                 Remove-Item -Path $tempPath -Recurse -Force -ErrorAction SilentlyContinue
             }
             
             Start-Sleep -Seconds 2
         }
-    } else {
-        Write-Host "No existing Unity processes found" -ForegroundColor Green
     }
 }
 
-# Run cleanup check
-Write-Host "Running initial cleanup check..." -ForegroundColor Cyan
+# Run cleanup check without verbose messages
 Cleanup-UnityProcesses -Force $ForceCleanup
 
-# Check if Unity path exists
-Write-Host "Verifying Unity executable path..." -ForegroundColor Cyan
+# Quickly check if Unity path exists
 if (-not (Test-Path $UnityPath)) {
     Write-Host "Error: Unity executable not found at $UnityPath" -ForegroundColor Red
     exit 1
 }
-Write-Host "Unity executable found at $UnityPath" -ForegroundColor Green
 
 # Get the absolute path to the Unity project
 $ProjectPath = Resolve-Path "."
-Write-Host "Project path: $ProjectPath" -ForegroundColor Cyan
 
-# Additional cleanup - specifically target lock files
-Write-Host "Checking for Unity lock files..." -ForegroundColor Cyan
+# Remove Unity lock file if exists
 $tempPath = Join-Path $ProjectPath "Temp"
 $editorLockFile = Join-Path $tempPath "UnityLockfile"
-
 if (Test-Path $editorLockFile) {
-    Write-Host "Removing Unity lock file..." -ForegroundColor Yellow
     Remove-Item -Path $editorLockFile -Force -ErrorAction SilentlyContinue
 }
 
-# Run Unity in screen mode
+# Run Unity in batch mode
 Write-Host "Starting Unity process..." -ForegroundColor Cyan
 $process = Start-Process -FilePath $UnityPath `
-                       -ArgumentList "-projectPath", "`"$ProjectPath`"", "-logFile", "`"$LogFile`"", "-executeMethod", "AutomatedTesting.RunMainSceneTest" `
-                       -PassThru
+                        -ArgumentList "-projectPath", "`"$ProjectPath`"", "-logFile", "`"$LogFile`"", "-executeMethod", "AutomatedTesting.RunMainSceneTest" `
+                        -PassThru
                        
 if ($null -eq $process) {
     Write-Host "Error: Failed to start Unity process." -ForegroundColor Red
     exit 1
 }
-Write-Host "Unity process started successfully (PID: $($process.Id))" -ForegroundColor Green
 
 # Function to check Unity initialization status
 function Test-UnityInitialization {
@@ -92,7 +80,11 @@ function Test-UnityInitialization {
     )
     
     if (-not (Test-Path $LogFilePath)) {
-        Write-Host "Log file not found at path: $LogFilePath" -ForegroundColor Yellow
+        # Only write this once, not repeatedly
+        if (-not $global:logFileWarningDisplayed) {
+            Write-Host "Log file not found at path: $LogFilePath" -ForegroundColor Yellow
+            $global:logFileWarningDisplayed = $true
+        }
         return $false
     }
     
@@ -105,27 +97,38 @@ function Test-UnityInitialization {
     foreach ($line in $logContent) {
         if ($line -match "Initialize engine version") {
             $initializationComplete = $true
-            Write-Host "Found initialization indicator in log" -ForegroundColor Green
         }
         if ($line -match "Loading scene") {
             $sceneLoaded = $true
-            Write-Host "Found scene loading indicator in log" -ForegroundColor Green
         }
         
+        # Now that we've identified all the patterns to filter, let's add the Licensing Module error to the non-critical patterns
+        $nonCriticalPatterns = @(
+            "fallback shader .* not found",
+            "Certificate has expired",
+            "LogAssemblyErrors",
+            "will not be compiled because it exists outside",
+            "Cert verify failed",
+            "EditorUpdateCheck",
+            "Licensing::Module",
+            "Access token is unavailable",
+            "Start importing .* using Guid\(",
+            "ValidationExceptions\.json",
+            "UnityEngine\.Debug:LogError"
+        )
+
         # Filter out common non-critical errors
-        $isNonCriticalError = $line -match "fallback shader .* not found" -or 
-                             $line -match "Certificate has expired" -or
-                             $line -match "LogAssemblyErrors" -or
-                             $line -match "will not be compiled because it exists outside" -or
-                             $line -match "Cert verify failed" -or
-                             $line -match "EditorUpdateCheck"
+        $isNonCriticalError = $false
+        foreach ($pattern in $nonCriticalPatterns) {
+            if ($line -match $pattern) {
+                $isNonCriticalError = $true
+                break
+            }
+        }
         
         if (($line -match "ERROR" -or $line -match "Exception") -and -not $isNonCriticalError) {
             $errorsFound = $true
             Write-Host "Found critical error in Unity log: $line" -ForegroundColor Red
-        }
-        elseif (($line -match "ERROR" -or $line -match "Exception") -and $isNonCriticalError) {
-            Write-Host "Ignoring non-critical error: $line" -ForegroundColor Yellow
         }
     }
     
@@ -145,11 +148,22 @@ function Test-UnityInitialization {
     )
     
     $readyCount = 0
+    $foundIndicators = @()
     foreach ($indicator in $readyIndicators) {
         if ($logContent -match $indicator) {
             $readyCount++
-            Write-Host "Found ready indicator in log: $indicator" -ForegroundColor Green
+            # Only add to foundIndicators if not already there (avoid duplicates)
+            if ($foundIndicators -notcontains $indicator) {
+                $foundIndicators += $indicator
+            }
         }
+    }
+    
+    # Only print once when initialization indicators are found
+    # Avoid printing this multiple times by using a global variable
+    if ($readyCount -gt 0 -and $foundIndicators.Count -gt 0 -and -not $global:initializationMessageDisplayed) {
+        Write-Host "Found initialization indicators: $($foundIndicators -join ', ')" -ForegroundColor Green
+        $global:initializationMessageDisplayed = $true
     }
     
     # Return true if we have either:
@@ -168,12 +182,27 @@ function Wait-ForUnityInitialization {
     Write-Host "Waiting for Unity to fully initialize..." -ForegroundColor Cyan
     $startTime = Get-Date
     $timeout = $startTime.AddSeconds($TimeoutSeconds)
+    $lastProgressDisplay = Get-Date
+    $progressInterval = 10  # Show progress every 10 seconds
+    
+    # Reset global variables
+    $global:logFileWarningDisplayed = $false
+    $global:initializationMessageDisplayed = $false
     
     while ((Get-Date) -lt $timeout) {
         if (Test-UnityInitialization -LogFilePath $LogFilePath) {
             Write-Host "Unity initialization completed successfully" -ForegroundColor Green
             return $true
         }
+        
+        # Only show progress periodically
+        $now = Get-Date
+        if (($now - $lastProgressDisplay).TotalSeconds -ge $progressInterval) {
+            $elapsedTime = [math]::Floor(($now - $startTime).TotalSeconds)
+            Write-Host "Still waiting for Unity initialization... ($elapsedTime seconds elapsed)" -ForegroundColor Yellow
+            $lastProgressDisplay = $now
+        }
+        
         Start-Sleep -Seconds 2
     }
     
@@ -181,21 +210,18 @@ function Wait-ForUnityInitialization {
     return $false
 }
 
-# Wait a few seconds to check if process is still running
-Write-Host "Waiting for Unity process to initialize..." -ForegroundColor Cyan
+# Quick check if process is still running after 5 seconds
 Start-Sleep -Seconds 5
 if ($process.HasExited) {
     Write-Host "Error: Unity process exited unexpectedly." -ForegroundColor Red
     exit 1
 }
-Write-Host "Unity process is running" -ForegroundColor Green
 
 # Wait for Unity to fully initialize
 if ($BypassInitCheck) {
     Write-Host "Bypassing Unity initialization check as requested" -ForegroundColor Yellow
     $initialized = $true
 } else {
-    Write-Host "Using LogFilePath: $LogFilePath" -ForegroundColor Cyan
     $initialized = Wait-ForUnityInitialization -LogFilePath $LogFilePath
 }
 

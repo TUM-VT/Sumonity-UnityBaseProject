@@ -136,7 +136,7 @@ function Test-UnityInitialization {
 function Wait-ForUnityInitialization {
     param (
         [string]$LogFilePath,
-        [int]$TimeoutSeconds = 300  # 5 minutes timeout
+        [int]$TimeoutSeconds = 900  # 15 minutes timeout
     )
     
     Write-Host "Waiting for Unity to fully initialize..." -ForegroundColor Cyan

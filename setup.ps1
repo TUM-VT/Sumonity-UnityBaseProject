@@ -1,10 +1,10 @@
 # Automated setup script for TUM Main Campus Unity Project
 
 # Ensure script is running with administrator privileges
-# if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-#     Write-Error "This script must be run as Administrator!"
-#     Exit 1
-# }
+if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+    Write-Error "This script must be run as Administrator!"
+    Exit 1
+}
 
 # Set execution policy
 Set-ExecutionPolicy Unrestricted -Force

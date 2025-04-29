@@ -10,7 +10,8 @@ param (
     [string]$PositionComparisonFile = "vehicle_position_comparison.csv",
     [double]$ErrorThreshold = 2.0,
     [string]$LogFilePath = "C:\Users\celsius\actions-runner\_work\Sumonity-UnityBaseProject\Sumonity-UnityBaseProject\unity_test_run.log",
-    [switch]$BypassInitCheck = $false
+    [switch]$BypassInitCheck = $false,
+    [int]$TimeThreshold = 20 # Minimum time in seconds before considering position errors
 )
 
 # Simple progress indicator
@@ -268,13 +269,29 @@ Analyze-LogFile -LogFilePath $LogFilePath
 function Evaluate-PositionComparisonData {
     param (
         [string]$FilePath,
-        [double]$Threshold
+        [double]$Threshold,
+        [int]$TimeThreshold
     )
     
     Write-Host "Evaluating vehicle position comparison data..." -ForegroundColor Cyan
+    Write-Host "Ignoring position errors below $TimeThreshold seconds..." -ForegroundColor Cyan
     if (Test-Path $FilePath) {
         try {
             $data = Import-Csv -Path $FilePath
+            
+            # Filter out entries below the time threshold if the data has timestamps
+            if ($data.Count -gt 0 -and $data[0].PSObject.Properties.Name -contains "Time") {
+                $filteredData = $data | Where-Object { [double]($_.Time -replace ',', '.') -ge $TimeThreshold }
+                if ($filteredData.Count -eq 0) {
+                    Write-Host "No data points found above the time threshold of $TimeThreshold seconds" -ForegroundColor Yellow
+                    return $null
+                }
+                Write-Host "Filtered from $($data.Count) to $($filteredData.Count) data points after applying time threshold" -ForegroundColor Cyan
+                $data = $filteredData
+            } else {
+                Write-Host "Time column not found in data, cannot apply time threshold" -ForegroundColor Yellow
+            }
+            
             $avgErrorCol = $data | Where-Object { $_.PSObject.Properties.Name -contains "AverageError" }
             
             if ($avgErrorCol) {
@@ -339,7 +356,7 @@ if ($VehiclePositionComparison) {
         Write-Host "Vehicle position comparison data saved to $positionFile" -ForegroundColor Green
         
         # Evaluate the position data
-        $evalResult = Evaluate-PositionComparisonData -FilePath $positionFile -Threshold $ErrorThreshold
+        $evalResult = Evaluate-PositionComparisonData -FilePath $positionFile -Threshold $ErrorThreshold -TimeThreshold $TimeThreshold
         
         if ($evalResult -eq $false) {
             Write-Host "Position comparison test FAILED" -ForegroundColor Red

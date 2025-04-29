@@ -24,8 +24,8 @@ jobs:
         shell: powershell
         
       - name: Execute setup script
-        run: .\setup.ps1
-        shell: powershell
+        run: powershell.exe -ExecutionPolicy bypass -File .\setup.ps1
+        shell: cmd
         
       - name: Check Unity installation path
         run: |

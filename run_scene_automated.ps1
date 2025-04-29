@@ -73,12 +73,12 @@ if (Test-Path $editorLockFile) {
 
 # Run Unity in screen mode
 Write-Host "Starting Unity process..." -ForegroundColor Cyan
-$currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $process = Start-Process -FilePath $UnityPath `
                          -ArgumentList "-projectPath", "`"$ProjectPath`"", "-logFile", "`"$LogFile`"", "-executeMethod", "AutomatedTesting.RunMainSceneTest" `
                          -PassThru `
+                         -NoNewWindow `
                          -WindowStyle Normal `
-                         -Credential $currentUser
+                         -Verb "open"
 
 if ($null -eq $process) {
     Write-Host "Error: Failed to start Unity process." -ForegroundColor Red

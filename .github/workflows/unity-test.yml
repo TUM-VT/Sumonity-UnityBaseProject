@@ -2,11 +2,14 @@ name: Unity Tests
 
 on:
   push:
-    branches: [ main, 'dev-install-script' ]
+    branches: [ main, 'dev-ci-testing' ]
+
+env:
+  BYPASS_UNITY_INIT: $false  # Set to $true to bypass initialization check if needed
 
 jobs:
   run-tests:
-    runs-on: windows-latest
+    runs-on: self-hosted
     
     steps:
       - name: Checkout repository
@@ -24,8 +27,8 @@ jobs:
         shell: powershell
         
       - name: Execute setup script
-        run: .\setup.ps1
-        shell: powershell
+        run: powershell.exe -ExecutionPolicy bypass -File .\setup.ps1
+        shell: cmd
         
       - name: Check Unity installation path
         run: |
@@ -55,7 +58,9 @@ jobs:
         shell: powershell
         
       - name: Run Unity tests
-        run: .\run_scene_automated.ps1 -UnityPath "${{ env.UNITY_PATH }}" -TimeToRun 120
+        run: |
+          $bypassInit = [System.Convert]::ToBoolean("${{ env.BYPASS_UNITY_INIT }}")
+          .\run_scene_automated.ps1 -UnityPath "${{ env.UNITY_PATH }}" -TimeToRun 120 -LogFilePath "${{ github.workspace }}\unity_test_run.log" $(if ($bypassInit) { "-BypassInitCheck" })
         shell: powershell
         
       - name: Upload test artifacts

@@ -1,6 +1,6 @@
 # Automated setup script for TUM Main Campus Unity Project
 
-Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope CurrentUser
+# Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope CurrentUser
 
 # Ensure script is running with administrator privileges
 # if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
@@ -9,7 +9,7 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope CurrentUser
 # }
 
 # Set execution policy
-Set-ExecutionPolicy Unrestricted -Force
+# Set-ExecutionPolicy Unrestricted -Force
 
 # Function to check if a command exists
 function Test-CommandExists {

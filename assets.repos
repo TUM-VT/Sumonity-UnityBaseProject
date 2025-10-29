@@ -3,14 +3,14 @@ repositories:
     type: git
     url: https://github.com/TUM-VT/Sumonity.git
     version: dev-version-2
-  Assets/BicycleModel:
+  Assets/Sumonity-BicycleModel:
     type: git
-    url: https://github.com/TUM-VT/Sumonity-UnityModelTemplate.git
-    version: bicycle
-  Assets/CarModel:
+    url: https://github.com/TUM-VT/Sumonity-BicycleModel.git
+    version: main
+  Assets/Sumonity-PassengerCars:
     type: git
-    url: https://github.com/TUM-VT/Sumonity-UnityModelTemplate.git
-    version: car
+    url: https://github.com/TUM-VT/Sumonity-PassengerCars.git
+    version: main
   Assets/BusModel:
     type: git
     url: https://github.com/TUM-VT/Sumonity-UnityModelTemplate.git

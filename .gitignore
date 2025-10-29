@@ -96,6 +96,9 @@ Assets/#Data/*
 !Assets/#Data/.gitkeep 
 Assets/parkedvehiclespawner/
 Assets/PedestrianModel/
+Assets/Sumonity-PassengerCars/
+Assets/Sumonity-BicycleModel/
+Assets/3d_model/
 
 speedsLogs.txt
 .vsconfig

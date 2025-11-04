@@ -17,8 +17,17 @@ git clone https://github.com/TUM-VT/Sumonity-UnityBaseProject.git
 ```
 
 Execute the install script in Powershell as Admin:
+
 ```
-./setup.ps1
+cd .\Sumonity-UnityBaseProject\
+.\setup.ps1
+```
+
+
+Then get the 3d model from tum2twin:
+```
+
+powershell -ExecutionPolicy Bypass -File download_unity_fbx.ps1
 ```
 
 ## Manual installation

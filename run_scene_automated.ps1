@@ -155,6 +155,7 @@ function Test-UnityInitialization {
             "Cert verify failed",
             "EditorUpdateCheck",
             "Licensing::Module",
+            "Licensing::Client",
             "Access token is unavailable",
             "Start importing .* using Guid\(",
             "ValidationExceptions\.json",
@@ -176,53 +177,36 @@ function Test-UnityInitialization {
         }
     }
     
-    # Check for specific Unity ready indicators (more strict - wait for actual play mode)
-    $readyIndicators = @(
+    # Check for specific Unity ready indicators - ONLY accept actual play mode entry
+    # We must see explicit play mode messages, not just compilation/initialization
+    $playModeIndicators = @(
         "Entered play mode",
         "EnteredPlayMode",
-        "Play mode started",
-        "PositionAccuracyLogger.*Initialized",
-        "Scene.*loaded.*play",
-        "Started playing scene"
+        "PositionAccuracyLogger.*Initialized"
     )
     
-    # Less reliable but acceptable indicators (need multiple)
-    $secondaryIndicators = @(
-        "GfxDevice:",
-        "Begin MonoManager",
-        "Initialize mono"
-    )
-    
-    $readyCount = 0
-    $secondaryCount = 0
+    $playModeFound = $false
     $foundIndicators = @()
     
-    foreach ($indicator in $readyIndicators) {
+    foreach ($indicator in $playModeIndicators) {
         $matches = $logContent | Where-Object { $_ -match $indicator }
         if ($matches) {
-            $readyCount++
+            $playModeFound = $true
             if ($foundIndicators -notcontains $indicator) {
                 $foundIndicators += $indicator
             }
         }
     }
     
-    foreach ($indicator in $secondaryIndicators) {
-        $matches = $logContent | Where-Object { $_ -match $indicator }
-        if ($matches) {
-            $secondaryCount++
-        }
-    }
-    
-    # Only print once when initialization indicators are found
-    if ($readyCount -gt 0 -and -not $global:initializationMessageDisplayed) {
-        Write-Host "Found $readyCount play mode indicator(s): $($foundIndicators -join ', ')" -ForegroundColor Green
+    # Only print once when play mode is detected
+    if ($playModeFound -and -not $global:initializationMessageDisplayed) {
+        Write-Host "PLAY MODE DETECTED: $($foundIndicators -join ', ')" -ForegroundColor Green
         $global:initializationMessageDisplayed = $true
     }
     
-    # Return true only if we have strong indicators of play mode, not just compilation/loading
-    # We need at least 1 primary indicator OR 3+ secondary indicators
-    return ($readyCount -ge 1 -or $secondaryCount -ge 3)
+    # Only return true if we have explicit play mode confirmation
+    # Don't accept engine initialization or scene loading as "ready" - must be in play mode
+    return $playModeFound
 }
 
 # Function to wait for Unity to fully initialize

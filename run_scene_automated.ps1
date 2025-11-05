@@ -179,10 +179,10 @@ function Test-UnityInitialization {
         }
     }
     
-    # Check for specific Unity ready indicators - look for native plugins refresh
-    # This is a reliable indicator that Unity has finished importing and is ready to start
+    # Check for specific Unity ready indicators
+    # Wait for the complete native plugins message with "found X plugins"
     $readyIndicators = @(
-        "Refreshing native plugins compatible for Editor",
+        "Refreshing native plugins compatible for Editor.*found \d+ plugins",
         "Entered play mode",
         "EnteredPlayMode",
         "PositionAccuracyLogger.*Initialized"
@@ -201,13 +201,13 @@ function Test-UnityInitialization {
         }
     }
     
-    # Only print once when ready state is detected
+    # Only print once when ready is detected
     if ($readyFound -and -not $global:initializationMessageDisplayed) {
         Write-Host "UNITY READY: $($foundIndicators -join ', ')" -ForegroundColor Green
         $global:initializationMessageDisplayed = $true
     }
     
-    # Return true if we see native plugins refresh or actual play mode
+    # Return true if we see the complete plugins message or play mode
     return $readyFound
 }
 

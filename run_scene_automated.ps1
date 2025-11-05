@@ -97,7 +97,7 @@ function Test-UnityInitialization {
         $global:logFileFoundDisplayed = $true
     }
     
-    $logContent = Get-Content $LogFilePath -Tail 500
+    $logContent = Get-Content $LogFilePath -Tail 200
     $initializationComplete = $false
     $sceneLoaded = $false
     $errorsFound = $false
@@ -156,12 +156,11 @@ function Test-UnityInitialization {
             "EditorUpdateCheck",
             "Licensing::Module",
             "Licensing::Client",
-            "FSBTool ERROR",
-            "FMOD sub-system",
             "Access token is unavailable",
             "Start importing .* using Guid\(",
             "ValidationExceptions\.json",
-            "UnityEngine\.Debug:LogError"
+            "UnityEngine\.Debug:LogError",
+            "FSBTool ERROR"
         )
 
         # Filter out common non-critical errors
@@ -179,37 +178,43 @@ function Test-UnityInitialization {
         }
     }
     
-    # Check for specific Unity ready indicators
-    # Wait for signs that the scene is actually running, not just compiling
-    $readyIndicators = @(
-        "Refreshing native plugins compatible for Editor.*found \d+ plugins",
-        "sys\.path = \[",  # Python initialization - scene is running
+    # Check for specific Unity ready indicators - ONLY accept actual play mode entry
+    # In batch mode, Unity doesn't always output "Entered play mode", so we look for:
+    # 1. Explicit play mode messages (editor/some batch runs)
+    # 2. PositionAccuracyLogger initialization (our custom marker)
+    # 3. Python sys.path setup (indicates SUMO/scene is running)
+    # 4. Scene physics/simulation starting
+    $playModeIndicators = @(
         "Entered play mode",
         "EnteredPlayMode",
-        "PositionAccuracyLogger.*Initialized"
+        "PositionAccuracyLogger.*Initialized",
+        "sys\.path = \['C:/Users",  # Python environment setup for SUMO
+        "Unloading.*unused Assets",  # Assets cleanup after scene load
+        "TrimDiskCacheJob"  # Disk cache cleanup happens after scene starts
     )
     
-    $readyFound = $false
+    $playModeFound = $false
     $foundIndicators = @()
     
-    foreach ($indicator in $readyIndicators) {
+    foreach ($indicator in $playModeIndicators) {
         $matches = $logContent | Where-Object { $_ -match $indicator }
         if ($matches) {
-            $readyFound = $true
+            $playModeFound = $true
             if ($foundIndicators -notcontains $indicator) {
                 $foundIndicators += $indicator
             }
         }
     }
     
-    # Only print once when ready is detected
-    if ($readyFound -and -not $global:initializationMessageDisplayed) {
-        Write-Host "UNITY READY: $($foundIndicators -join ', ')" -ForegroundColor Green
+    # Only print once when play mode is detected
+    if ($playModeFound -and -not $global:initializationMessageDisplayed) {
+        Write-Host "PLAY MODE DETECTED: $($foundIndicators -join ', ')" -ForegroundColor Green
         $global:initializationMessageDisplayed = $true
     }
     
-    # Return true if we see the complete plugins message or play mode
-    return $readyFound
+    # Only return true if we have explicit play mode confirmation
+    # Don't accept engine initialization or scene loading as "ready" - must be in play mode
+    return $playModeFound
 }
 
 # Function to wait for Unity to fully initialize

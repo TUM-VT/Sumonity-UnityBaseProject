@@ -306,6 +306,19 @@ function Analyze-LogFile {
 # Analyze the log after completion
 Analyze-LogFile -LogFilePath $LogFilePath
 
+# Additional diagnostic: Check for PositionAccuracyLogger messages
+Write-Host "`nChecking for Position Accuracy Logger initialization in log..." -ForegroundColor Cyan
+if (Test-Path $LogFilePath) {
+    $loggerMessages = Get-Content $LogFilePath | Select-String "PositionAccuracyLogger"
+    if ($loggerMessages) {
+        Write-Host "Found Position Accuracy Logger messages:" -ForegroundColor Green
+        $loggerMessages | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+    } else {
+        Write-Host "WARNING: No Position Accuracy Logger messages found in log" -ForegroundColor Yellow
+        Write-Host "This indicates the logger may not be initializing properly" -ForegroundColor Yellow
+    }
+}
+
 # Function to evaluate position accuracy statistics from new logging system
 function Evaluate-PositionAccuracyStatistics {
     param (
@@ -319,6 +332,25 @@ function Evaluate-PositionAccuracyStatistics {
     
     if (-not (Test-Path $DirectoryPath)) {
         Write-Host "Position accuracy directory not found at $DirectoryPath" -ForegroundColor Red
+        Write-Host "`nDiagnostic Information:" -ForegroundColor Yellow
+        Write-Host "  Checking parent directory..." -ForegroundColor Yellow
+        $parentDir = Split-Path $DirectoryPath -Parent
+        if (Test-Path $parentDir) {
+            Write-Host "  Parent directory exists: $parentDir" -ForegroundColor Green
+            Write-Host "  Contents:" -ForegroundColor Yellow
+            Get-ChildItem $parentDir | ForEach-Object { Write-Host "    - $($_.Name)" -ForegroundColor Gray }
+        } else {
+            Write-Host "  Parent directory does not exist: $parentDir" -ForegroundColor Red
+        }
+        
+        # Check if any CSV files were created in the root directory
+        Write-Host "`n  Checking for position accuracy CSV files in project root..." -ForegroundColor Yellow
+        $csvFiles = Get-ChildItem -Path $ProjectPath -Filter "position_accuracy_*.csv" -ErrorAction SilentlyContinue
+        if ($csvFiles) {
+            Write-Host "  Found CSV files in root directory (wrong location!):" -ForegroundColor Yellow
+            $csvFiles | ForEach-Object { Write-Host "    - $($_.Name)" -ForegroundColor Gray }
+        }
+        
         return $null
     }
     

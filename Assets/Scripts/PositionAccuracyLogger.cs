@@ -118,6 +118,7 @@ namespace tum_car_controller
 
         void Start()
         {
+            Debug.Log("[PositionAccuracyLogger] Start() called - attempting to initialize...");
             InitializeLogging();
         }
 
@@ -131,12 +132,23 @@ namespace tum_car_controller
         /// </summary>
         private void InitializeLogging()
         {
-            if (!enableLogging || isInitialized) return;
+            if (!enableLogging)
+            {
+                Debug.LogWarning("[PositionAccuracyLogger] Logging is disabled (enableLogging = false)");
+                return;
+            }
+            
+            if (isInitialized)
+            {
+                Debug.LogWarning("[PositionAccuracyLogger] Already initialized, skipping");
+                return;
+            }
 
             try
             {
                 // Create output directory if it doesn't exist
                 string fullPath = Path.Combine(Application.dataPath, "..", outputDirectory);
+                Debug.Log($"[PositionAccuracyLogger] Creating directory: {fullPath}");
                 Directory.CreateDirectory(fullPath);
 
                 // Create timestamped log file
@@ -148,11 +160,12 @@ namespace tum_car_controller
                 WriteCSVHeader(liveLogWriter);
 
                 isInitialized = true;
-                Debug.Log($"[PositionAccuracyLogger] Initialized. Logging to: {currentLogFileName}");
+                Debug.Log($"[PositionAccuracyLogger] Initialized successfully. Logging to: {currentLogFileName}");
             }
             catch (Exception e)
             {
                 Debug.LogError($"[PositionAccuracyLogger] Failed to initialize: {e.Message}");
+                Debug.LogError($"[PositionAccuracyLogger] Stack trace: {e.StackTrace}");
                 enableLogging = false;
             }
         }

@@ -106,6 +106,28 @@ function Test-UnityInitialization {
     if (-not $global:logLinesDisplayed) {
         Write-Host "`nRecent log entries (for debugging):" -ForegroundColor Cyan
         $logContent | Select-Object -Last 5 | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+        
+        # Also show what stage Unity is in
+        Write-Host "`nDetecting Unity initialization stage:" -ForegroundColor Cyan
+        if ($logContent -match "Rebuilding Library") {
+            Write-Host "  - Rebuilding asset library (this can take several minutes on first run)" -ForegroundColor Yellow
+        }
+        if ($logContent -match "Importing") {
+            Write-Host "  - Importing assets..." -ForegroundColor Yellow
+        }
+        if ($logContent -match "Compiling") {
+            Write-Host "  - Compiling scripts..." -ForegroundColor Yellow
+        }
+        if ($logContent -match "Initialize engine") {
+            Write-Host "  - Engine initialized" -ForegroundColor Green
+        }
+        if ($logContent -match "Loading scene" -or $logContent -match "Opening scene") {
+            Write-Host "  - Loading scene..." -ForegroundColor Yellow
+        }
+        if ($logContent -match "Entered play mode" -or $logContent -match "EnteredPlayMode") {
+            Write-Host "  - PLAY MODE ACTIVE" -ForegroundColor Green
+        }
+        
         $global:logLinesDisplayed = $true
     }
     
@@ -154,60 +176,60 @@ function Test-UnityInitialization {
         }
     }
     
-    # Check for specific Unity ready indicators (more flexible patterns)
+    # Check for specific Unity ready indicators (more strict - wait for actual play mode)
     $readyIndicators = @(
-        "Unity Editor is ready",
-        "Scene loaded",
-        "All packages loaded",
-        "Project loaded",
-        "Initialization complete",
-        "Loaded scene",
-        "Successfully loaded",
-        "Started playing",
-        "Scene is active",
+        "Entered play mode",
+        "EnteredPlayMode",
         "Play mode started",
-        "PositionAccuracyLogger",
-        "AutomatedTesting",
-        "RunMainSceneTest",
-        "Initialize mono",
+        "PositionAccuracyLogger.*Initialized",
+        "Scene.*loaded.*play",
+        "Started playing scene"
+    )
+    
+    # Less reliable but acceptable indicators (need multiple)
+    $secondaryIndicators = @(
         "GfxDevice:",
-        "Begin MonoManager"
+        "Begin MonoManager",
+        "Initialize mono"
     )
     
     $readyCount = 0
+    $secondaryCount = 0
     $foundIndicators = @()
+    
     foreach ($indicator in $readyIndicators) {
         $matches = $logContent | Where-Object { $_ -match $indicator }
         if ($matches) {
             $readyCount++
-            # Only add to foundIndicators if not already there (avoid duplicates)
             if ($foundIndicators -notcontains $indicator) {
                 $foundIndicators += $indicator
             }
         }
     }
     
+    foreach ($indicator in $secondaryIndicators) {
+        $matches = $logContent | Where-Object { $_ -match $indicator }
+        if ($matches) {
+            $secondaryCount++
+        }
+    }
+    
     # Only print once when initialization indicators are found
-    # Avoid printing this multiple times by using a global variable
-    if ($readyCount -gt 0 -and $foundIndicators.Count -gt 0 -and -not $global:initializationMessageDisplayed) {
-        Write-Host "Found $readyCount initialization indicator(s): $($foundIndicators -join ', ')" -ForegroundColor Green
+    if ($readyCount -gt 0 -and -not $global:initializationMessageDisplayed) {
+        Write-Host "Found $readyCount play mode indicator(s): $($foundIndicators -join ', ')" -ForegroundColor Green
         $global:initializationMessageDisplayed = $true
     }
     
-    # More lenient check: Return true if we have any indicators OR scene is loaded OR enough log content
-    # This is because batch mode Unity may not output all the usual messages
-    $logContentHasMinimumSize = $logContent.Count -gt 20
-    
-    return (($initializationComplete -and $sceneLoaded -and -not $errorsFound) -or 
-            $readyCount -ge 2 -or 
-            ($logContentHasMinimumSize -and $sceneLoaded))
+    # Return true only if we have strong indicators of play mode, not just compilation/loading
+    # We need at least 1 primary indicator OR 3+ secondary indicators
+    return ($readyCount -ge 1 -or $secondaryCount -ge 3)
 }
 
 # Function to wait for Unity to fully initialize
 function Wait-ForUnityInitialization {
     param (
         [string]$LogFilePath,
-        [int]$TimeoutSeconds = 180  # Reduced to 3 minutes timeout
+        [int]$TimeoutSeconds = 600  # 10 minutes timeout for first-time initialization
     )
     
     Write-Host "Waiting for Unity to fully initialize..." -ForegroundColor Cyan
@@ -232,7 +254,19 @@ function Wait-ForUnityInitialization {
         $now = Get-Date
         if (($now - $lastProgressDisplay).TotalSeconds -ge $progressInterval) {
             $elapsedTime = [math]::Floor(($now - $startTime).TotalSeconds)
-            Write-Host "Still waiting for Unity initialization... ($elapsedTime seconds elapsed)" -ForegroundColor Yellow
+            
+            # Show what Unity is doing
+            if (Test-Path $LogFilePath) {
+                $recentLines = Get-Content $LogFilePath -Tail 3 -ErrorAction SilentlyContinue
+                $lastLine = $recentLines | Select-Object -Last 1
+                if ($lastLine -and $lastLine.Trim() -ne "") {
+                    Write-Host "Still waiting... ($elapsedTime seconds) - Last activity: $($lastLine.Substring(0, [Math]::Min(100, $lastLine.Length)))" -ForegroundColor Yellow
+                } else {
+                    Write-Host "Still waiting for Unity initialization... ($elapsedTime seconds elapsed)" -ForegroundColor Yellow
+                }
+            } else {
+                Write-Host "Still waiting for Unity initialization... ($elapsedTime seconds elapsed)" -ForegroundColor Yellow
+            }
             $lastProgressDisplay = $now
         }
         

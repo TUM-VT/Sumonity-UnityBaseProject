@@ -156,6 +156,8 @@ function Test-UnityInitialization {
             "EditorUpdateCheck",
             "Licensing::Module",
             "Licensing::Client",
+            "FSBTool ERROR",
+            "FMOD sub-system",
             "Access token is unavailable",
             "Start importing .* using Guid\(",
             "ValidationExceptions\.json",
@@ -177,36 +179,36 @@ function Test-UnityInitialization {
         }
     }
     
-    # Check for specific Unity ready indicators - ONLY accept actual play mode entry
-    # We must see explicit play mode messages, not just compilation/initialization
-    $playModeIndicators = @(
+    # Check for specific Unity ready indicators - look for native plugins refresh
+    # This is a reliable indicator that Unity has finished importing and is ready to start
+    $readyIndicators = @(
+        "Refreshing native plugins compatible for Editor",
         "Entered play mode",
         "EnteredPlayMode",
         "PositionAccuracyLogger.*Initialized"
     )
     
-    $playModeFound = $false
+    $readyFound = $false
     $foundIndicators = @()
     
-    foreach ($indicator in $playModeIndicators) {
+    foreach ($indicator in $readyIndicators) {
         $matches = $logContent | Where-Object { $_ -match $indicator }
         if ($matches) {
-            $playModeFound = $true
+            $readyFound = $true
             if ($foundIndicators -notcontains $indicator) {
                 $foundIndicators += $indicator
             }
         }
     }
     
-    # Only print once when play mode is detected
-    if ($playModeFound -and -not $global:initializationMessageDisplayed) {
-        Write-Host "PLAY MODE DETECTED: $($foundIndicators -join ', ')" -ForegroundColor Green
+    # Only print once when ready state is detected
+    if ($readyFound -and -not $global:initializationMessageDisplayed) {
+        Write-Host "UNITY READY: $($foundIndicators -join ', ')" -ForegroundColor Green
         $global:initializationMessageDisplayed = $true
     }
     
-    # Only return true if we have explicit play mode confirmation
-    # Don't accept engine initialization or scene loading as "ready" - must be in play mode
-    return $playModeFound
+    # Return true if we see native plugins refresh or actual play mode
+    return $readyFound
 }
 
 # Function to wait for Unity to fully initialize

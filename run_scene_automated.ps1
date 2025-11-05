@@ -97,7 +97,7 @@ function Test-UnityInitialization {
         $global:logFileFoundDisplayed = $true
     }
     
-    $logContent = Get-Content $LogFilePath -Tail 200
+    $logContent = Get-Content $LogFilePath -Tail 500
     $initializationComplete = $false
     $sceneLoaded = $false
     $errorsFound = $false
@@ -180,9 +180,10 @@ function Test-UnityInitialization {
     }
     
     # Check for specific Unity ready indicators
-    # Wait for the complete native plugins message with "found X plugins"
+    # Wait for signs that the scene is actually running, not just compiling
     $readyIndicators = @(
         "Refreshing native plugins compatible for Editor.*found \d+ plugins",
+        "sys\.path = \[",  # Python initialization - scene is running
         "Entered play mode",
         "EnteredPlayMode",
         "PositionAccuracyLogger.*Initialized"

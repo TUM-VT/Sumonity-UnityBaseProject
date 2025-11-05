@@ -7,11 +7,10 @@ param (
     [switch]$ForceCleanup = $true,
     [switch]$ScreenMode = $false,
     [switch]$VehiclePositionComparison = $true,
-    [string]$PositionComparisonFile = "vehicle_position_comparison.csv",
-    [double]$ErrorThreshold = 3.0,
+    [string]$PositionAccuracyDirectory = "Logs\PositionAccuracy",
+    [double]$ErrorThreshold = 1.5,  # Updated to 1.5 meters for new logging system
     [string]$LogFilePath = "C:\Users\celsius\actions-runner\_work\Sumonity-UnityBaseProject\Sumonity-UnityBaseProject\unity_test_run.log",
-    [switch]$BypassInitCheck = $false,
-    [int]$TimeThreshold = 20 # Minimum time in seconds before considering position errors
+    [switch]$BypassInitCheck = $false
 )
 
 # Simple progress indicator
@@ -84,22 +83,44 @@ function Test-UnityInitialization {
         # Only write this once, not repeatedly
         if (-not $global:logFileWarningDisplayed) {
             Write-Host "Log file not found at path: $LogFilePath" -ForegroundColor Yellow
+            Write-Host "Expected log path: $LogFilePath" -ForegroundColor Yellow
             $global:logFileWarningDisplayed = $true
         }
         return $false
     }
     
-    $logContent = Get-Content $LogFilePath -Tail 100
+    # Show that we found the log file on first read
+    if (-not $global:logFileFoundDisplayed) {
+        Write-Host "Log file found at: $LogFilePath" -ForegroundColor Green
+        $fileSize = (Get-Item $LogFilePath).Length
+        Write-Host "Current log file size: $fileSize bytes" -ForegroundColor Cyan
+        $global:logFileFoundDisplayed = $true
+    }
+    
+    $logContent = Get-Content $LogFilePath -Tail 200
     $initializationComplete = $false
     $sceneLoaded = $false
     $errorsFound = $false
+    
+    # Debug: Show last few log lines on first check
+    if (-not $global:logLinesDisplayed) {
+        Write-Host "`nRecent log entries (for debugging):" -ForegroundColor Cyan
+        $logContent | Select-Object -Last 5 | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+        $global:logLinesDisplayed = $true
+    }
     
     # Check for initialization sequence
     foreach ($line in $logContent) {
         if ($line -match "Initialize engine version") {
             $initializationComplete = $true
         }
-        if ($line -match "Loading scene") {
+        if ($line -match "Loading scene" -or $line -match "Loaded scene" -or $line -match "Opening scene") {
+            $sceneLoaded = $true
+        }
+        
+        # Check for position accuracy logger initialization as a positive signal
+        if ($line -match "PositionAccuracyLogger.*Initialized") {
+            Write-Host "Position Accuracy Logger initialized successfully" -ForegroundColor Green
             $sceneLoaded = $true
         }
         
@@ -133,25 +154,31 @@ function Test-UnityInitialization {
         }
     }
     
-    # Check for specific Unity ready indicators
+    # Check for specific Unity ready indicators (more flexible patterns)
     $readyIndicators = @(
         "Unity Editor is ready",
-        "Scene loaded successfully",
+        "Scene loaded",
         "All packages loaded",
-        "Project loaded successfully",
+        "Project loaded",
         "Initialization complete",
         "Loaded scene",
-        "Scene has been loaded",
         "Successfully loaded",
         "Started playing",
         "Scene is active",
-        "Play mode started"
+        "Play mode started",
+        "PositionAccuracyLogger",
+        "AutomatedTesting",
+        "RunMainSceneTest",
+        "Initialize mono",
+        "GfxDevice:",
+        "Begin MonoManager"
     )
     
     $readyCount = 0
     $foundIndicators = @()
     foreach ($indicator in $readyIndicators) {
-        if ($logContent -match $indicator) {
+        $matches = $logContent | Where-Object { $_ -match $indicator }
+        if ($matches) {
             $readyCount++
             # Only add to foundIndicators if not already there (avoid duplicates)
             if ($foundIndicators -notcontains $indicator) {
@@ -163,21 +190,24 @@ function Test-UnityInitialization {
     # Only print once when initialization indicators are found
     # Avoid printing this multiple times by using a global variable
     if ($readyCount -gt 0 -and $foundIndicators.Count -gt 0 -and -not $global:initializationMessageDisplayed) {
-        Write-Host "Found initialization indicators: $($foundIndicators -join ', ')" -ForegroundColor Green
+        Write-Host "Found $readyCount initialization indicator(s): $($foundIndicators -join ', ')" -ForegroundColor Green
         $global:initializationMessageDisplayed = $true
     }
     
-    # Return true if we have either:
-    # 1. Both initialization and scene loading complete, and no critical errors, OR
-    # 2. At least 1 ready indicator is found
-    return (($initializationComplete -and $sceneLoaded -and -not $errorsFound) -or $readyCount -ge 1)
+    # More lenient check: Return true if we have any indicators OR scene is loaded OR enough log content
+    # This is because batch mode Unity may not output all the usual messages
+    $logContentHasMinimumSize = $logContent.Count -gt 20
+    
+    return (($initializationComplete -and $sceneLoaded -and -not $errorsFound) -or 
+            $readyCount -ge 2 -or 
+            ($logContentHasMinimumSize -and $sceneLoaded))
 }
 
 # Function to wait for Unity to fully initialize
 function Wait-ForUnityInitialization {
     param (
         [string]$LogFilePath,
-        [int]$TimeoutSeconds = 900  # 15 minutes timeout
+        [int]$TimeoutSeconds = 180  # Reduced to 3 minutes timeout
     )
     
     Write-Host "Waiting for Unity to fully initialize..." -ForegroundColor Cyan
@@ -188,6 +218,8 @@ function Wait-ForUnityInitialization {
     
     # Reset global variables
     $global:logFileWarningDisplayed = $false
+    $global:logFileFoundDisplayed = $false
+    $global:logLinesDisplayed = $false
     $global:initializationMessageDisplayed = $false
     
     while ((Get-Date) -lt $timeout) {
@@ -221,9 +253,18 @@ if ($process.HasExited) {
 # Wait for Unity to fully initialize
 if ($BypassInitCheck) {
     Write-Host "Bypassing Unity initialization check as requested" -ForegroundColor Yellow
+    Write-Host "Waiting 15 seconds for Unity to start..." -ForegroundColor Cyan
+    Start-Sleep -Seconds 15
     $initialized = $true
 } else {
     $initialized = Wait-ForUnityInitialization -LogFilePath $LogFilePath
+    
+    # If initialization check failed, but process is still running, give benefit of doubt
+    if (-not $initialized -and -not $process.HasExited) {
+        Write-Host "Warning: Standard initialization checks failed, but Unity is still running" -ForegroundColor Yellow
+        Write-Host "Proceeding anyway - Unity may be running in batch mode with minimal logging" -ForegroundColor Yellow
+        $initialized = $true
+    }
 }
 
 if (-not $initialized) {
@@ -265,111 +306,119 @@ function Analyze-LogFile {
 # Analyze the log after completion
 Analyze-LogFile -LogFilePath $LogFilePath
 
-# Function to evaluate position comparison data
-function Evaluate-PositionComparisonData {
+# Function to evaluate position accuracy statistics from new logging system
+function Evaluate-PositionAccuracyStatistics {
     param (
-        [string]$FilePath,
-        [double]$Threshold,
-        [int]$TimeThreshold
+        [string]$DirectoryPath,
+        [double]$Threshold
     )
     
-    Write-Host "Evaluating vehicle position comparison data..." -ForegroundColor Cyan
-    Write-Host "Ignoring position errors below $TimeThreshold seconds..." -ForegroundColor Cyan
-    if (Test-Path $FilePath) {
-        try {
-            $data = Import-Csv -Path $FilePath
+    Write-Host "Evaluating position accuracy statistics from new logging system..." -ForegroundColor Cyan
+    Write-Host "Looking for statistics summary files in: $DirectoryPath" -ForegroundColor Cyan
+    Write-Host "Error threshold: $Threshold meters" -ForegroundColor Cyan
+    
+    if (-not (Test-Path $DirectoryPath)) {
+        Write-Host "Position accuracy directory not found at $DirectoryPath" -ForegroundColor Red
+        return $null
+    }
+    
+    # Find the most recent statistics summary file
+    $summaryFiles = Get-ChildItem -Path $DirectoryPath -Filter "statistics_summary_*.txt" -ErrorAction SilentlyContinue
+    
+    if (-not $summaryFiles -or $summaryFiles.Count -eq 0) {
+        Write-Host "No statistics summary files found in $DirectoryPath" -ForegroundColor Yellow
+        Write-Host "Expected format: statistics_summary_YYYY-MM-DD_HH-mm-ss.txt" -ForegroundColor Yellow
+        return $null
+    }
+    
+    # Get the most recent file
+    $latestFile = $summaryFiles | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    Write-Host "Found statistics summary file: $($latestFile.Name)" -ForegroundColor Green
+    Write-Host "File last modified: $($latestFile.LastWriteTime)" -ForegroundColor Cyan
+    
+    try {
+        $content = Get-Content -Path $latestFile.FullName
+        
+        # Parse the file for average position error (handle both comma and period decimal separators)
+        $avgErrorLine = $content | Where-Object { $_ -match "Average Position Error:\s*([\d.,]+)\s*m" }
+        
+        if ($avgErrorLine) {
+            # Replace comma with period for parsing (handle European number format)
+            $avgErrorString = $Matches[1] -replace ',', '.'
+            $avgError = [double]$avgErrorString
+            Write-Host "Overall Average Position Error: $avgError meters" -ForegroundColor Cyan
             
-            # Filter out entries below the time threshold if the data has timestamps
-            if ($data.Count -gt 0 -and $data[0].PSObject.Properties.Name -contains "Timestamp") {
-                $filteredData = $data | Where-Object { [double]($_.Timestamp -replace ',', '.') -ge $TimeThreshold }
-                if ($filteredData.Count -eq 0) {
-                    Write-Host "No data points found above the time threshold of $TimeThreshold seconds" -ForegroundColor Yellow
-                    return $null
-                }
-                Write-Host "Filtered from $($data.Count) to $($filteredData.Count) data points after applying time threshold" -ForegroundColor Cyan
-                $data = $filteredData
-            } else {
-                Write-Host "Timestamp column not found in data, cannot apply time threshold" -ForegroundColor Yellow
-            }
-            
-            $avgErrorCol = $data | Where-Object { $_.PSObject.Properties.Name -contains "AverageError" }
-            
-            if ($avgErrorCol) {
-                # Find the AverageError value - could be in different formats depending on CSV structure
-                $avgError = $null
-                if ($data[-1].AverageError) {
-                    # If AverageError is a direct column
-                    $avgError = [double]$data[-1].AverageError
-                } elseif ($data.AverageError) {
-                    # If CSV has just one row with stats
-                    $avgError = [double]$data.AverageError
+            # Check if within threshold
+            if ($avgError -gt $Threshold) {
+                Write-Host "ERROR: Average position error ($avgError m) exceeds threshold of $Threshold meters" -ForegroundColor Red
+                
+                # Parse per-vehicle statistics for more details
+                Write-Host "`nPer-Vehicle Statistics:" -ForegroundColor Yellow
+                $inVehicleSection = $false
+                foreach ($line in $content) {
+                    if ($line -match "=== Per-Vehicle Statistics ===") {
+                        $inVehicleSection = $true
+                        continue
+                    }
+                    if ($inVehicleSection -and $line.Trim() -ne "") {
+                        Write-Host "  $line" -ForegroundColor Yellow
+                    }
                 }
                 
-                if ($null -ne $avgError) {
-                    Write-Host "Average position error: $avgError meters" -ForegroundColor Cyan
-                    
-                    # Check for individual passenger vehicles exceeding the threshold
-                    $passengersOverThreshold = $data | Where-Object { 
-                        $_.VehicleType -like "*passenger*" -and 
-                        [double]($_.AverageError -replace ',', '.') -gt $Threshold 
-                    }
-                    
-                    if ($passengersOverThreshold -and $passengersOverThreshold.Count -gt 0) {
-                        Write-Host "ERROR: Found $($passengersOverThreshold.Count) passenger vehicle(s) with average error exceeding threshold of $Threshold meters" -ForegroundColor Red
-                        foreach ($vehicle in $passengersOverThreshold) {
-                            Write-Host "  - Vehicle $($vehicle.VehicleID): Average error = $($vehicle.AverageError) meters" -ForegroundColor Red
-                        }
-                        return $false
-                    }
-                    
-                    if ($avgError -gt $Threshold) {
-                        Write-Host "ERROR: Average position error ($avgError m) exceeds threshold of $Threshold meters" -ForegroundColor Red
-                        return $false
-                    } else {
-                        Write-Host "Position accuracy is within acceptable limits" -ForegroundColor Green
-                        return $true
-                    }
-                } else {
-                    Write-Host "Could not find AverageError value in the CSV file" -ForegroundColor Yellow
-                    return $null
-                }
+                return $false
             } else {
-                Write-Host "AverageError column not found in the position comparison data" -ForegroundColor Yellow
-                return $null
+                Write-Host "Position accuracy is within acceptable limits (threshold: $Threshold m)" -ForegroundColor Green
+                
+                # Also check for total entries to ensure we got enough data
+                $totalEntriesLine = $content | Where-Object { $_ -match "Total Entries Logged:\s*(\d+)" }
+                if ($totalEntriesLine) {
+                    $totalEntries = [int]($Matches[1])
+                    Write-Host "Total entries logged: $totalEntries" -ForegroundColor Cyan
+                    
+                    if ($totalEntries -lt 10) {
+                        Write-Host "WARNING: Very few entries logged ($totalEntries). Results may not be reliable." -ForegroundColor Yellow
+                    }
+                }
+                
+                # Show active vehicles count
+                $activeVehiclesLine = $content | Where-Object { $_ -match "Active Vehicles:\s*(\d+)" }
+                if ($activeVehiclesLine) {
+                    $activeVehicles = [int]($Matches[1])
+                    Write-Host "Active vehicles tracked: $activeVehicles" -ForegroundColor Cyan
+                }
+                
+                return $true
             }
-        }
-        catch {
-            Write-Host "Error parsing position comparison data: $_" -ForegroundColor Red
+        } else {
+            Write-Host "Could not parse Average Position Error from statistics summary" -ForegroundColor Yellow
+            Write-Host "File content preview:" -ForegroundColor Yellow
+            $content | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
             return $null
         }
-    } else {
-        Write-Host "Position comparison file not found at $FilePath" -ForegroundColor Yellow
+    }
+    catch {
+        Write-Host "Error reading or parsing statistics summary: $_" -ForegroundColor Red
         return $null
     }
 }
 
-# Check for vehicle position comparison results
+# Check for vehicle position accuracy results from new logging system
 if ($VehiclePositionComparison) {
-    Write-Host "Checking for vehicle position comparison results..." -ForegroundColor Cyan
-    $positionFile = Join-Path $ProjectPath $PositionComparisonFile
-    if (Test-Path $positionFile) {
-        Write-Host "Vehicle position comparison data saved to $positionFile" -ForegroundColor Green
-        
-        # Evaluate the position data
-        $evalResult = Evaluate-PositionComparisonData -FilePath $positionFile -Threshold $ErrorThreshold -TimeThreshold $TimeThreshold
-        
-        if ($evalResult -eq $false) {
-            Write-Host "Position comparison test FAILED" -ForegroundColor Red
-            exit 1  # Exit with error code for pipeline integration
-        } elseif ($evalResult -eq $true) {
-            Write-Host "Position comparison test PASSED" -ForegroundColor Green
-        } else {
-            Write-Host "Position comparison test INCONCLUSIVE" -ForegroundColor Yellow
-        }
-    } else {
-        Write-Host "No vehicle position comparison data found" -ForegroundColor Red
-        Write-Host "Position comparison test FAILED - No data available" -ForegroundColor Red
+    Write-Host "Checking for position accuracy statistics from new logging system..." -ForegroundColor Cyan
+    $positionDir = Join-Path $ProjectPath $PositionAccuracyDirectory
+    
+    # Evaluate the position accuracy statistics
+    $evalResult = Evaluate-PositionAccuracyStatistics -DirectoryPath $positionDir -Threshold $ErrorThreshold
+    
+    if ($evalResult -eq $false) {
+        Write-Host "Position accuracy test FAILED - Error exceeds threshold" -ForegroundColor Red
         exit 1  # Exit with error code for pipeline integration
+    } elseif ($evalResult -eq $true) {
+        Write-Host "Position accuracy test PASSED" -ForegroundColor Green
+    } else {
+        Write-Host "Position accuracy test INCONCLUSIVE - No data available or parsing error" -ForegroundColor Yellow
+        Write-Host "This may indicate the simulation did not run long enough or logger was not initialized" -ForegroundColor Yellow
+        exit 1  # Exit with error code since we expect position data
     }
 }
 

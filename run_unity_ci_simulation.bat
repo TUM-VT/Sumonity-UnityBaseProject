@@ -98,7 +98,7 @@ if defined EXTRA_ARGS set "UNITY_ARGS=!UNITY_ARGS! %EXTRA_ARGS%"
 
 set "UNITY_ARGS_ENV=!UNITY_ARGS!"
 if not defined PROGRESS_INTERVAL set "PROGRESS_INTERVAL=60"
-set "PS_CMD=^& { $start = Get-Date; $interval = 60; $parsed = 0; if ([int]::TryParse($env:PROGRESS_INTERVAL, [ref]$parsed) -and $parsed -gt 0) { $interval = $parsed } $psi = New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName = $env:UNITY_PATH; $psi.Arguments = $env:UNITY_ARGS_ENV; $psi.UseShellExecute = $false; $proc = [System.Diagnostics.Process]::Start($psi); if (-not $proc) { Write-Host '[ERROR] Failed to start Unity process.'; exit 1 } try { while (-not $proc.HasExited) { Start-Sleep -Seconds $interval; if ($proc.HasExited) { break } $elapsed = (Get-Date) - $start; Write-Host ([string]::Format('[INFO] Elapsed time: {0:hh\:mm\:ss}', $elapsed)); $proc.Refresh() } $proc.WaitForExit(); exit $proc.ExitCode } finally { $proc.Dispose() } }"
+set "PS_CMD=& { $start = Get-Date; $interval = 60; $parsed = 0; if ([int]::TryParse($env:PROGRESS_INTERVAL, [ref]$parsed) -and $parsed -gt 0) { $interval = $parsed } $psi = New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName = $env:UNITY_PATH; $psi.Arguments = $env:UNITY_ARGS_ENV; $psi.UseShellExecute = $false; $proc = [System.Diagnostics.Process]::Start($psi); if (-not $proc) { Write-Host '[ERROR] Failed to start Unity process.'; exit 1 } try { while (-not $proc.HasExited) { Start-Sleep -Seconds $interval; if ($proc.HasExited) { break } $elapsed = (Get-Date) - $start; Write-Host ([string]::Format('[INFO] Elapsed time: {0:hh\:mm\:ss}', $elapsed)); $proc.Refresh() } $proc.WaitForExit(); exit $proc.ExitCode } finally { $proc.Dispose() } }"
 
 echo [INFO] Launching Unity from %UNITY_PATH%
 echo [INFO] Scene: %SCENE_ARG%

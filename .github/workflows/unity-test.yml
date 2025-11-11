@@ -57,17 +57,16 @@ jobs:
           echo "UNITY_PATH=$UnityPath" >> $env:GITHUB_ENV
         shell: powershell
         
-      - name: Run Unity tests
-        run: |
-          $bypassInit = [System.Convert]::ToBoolean("${{ env.BYPASS_UNITY_INIT }}")
-          .\run_scene_automated.ps1 -UnityPath "${{ env.UNITY_PATH }}" -TimeToRun 120 -LogFilePath "${{ github.workspace }}\unity_test_run.log" $(if ($bypassInit) { "-BypassInitCheck" })
-        shell: powershell
+      - name: Run CI simulation
+        run: .\run_unity_ci_simulation.bat -simulationSeconds 30 -unityPath "%UNITY_PATH%" --threshold 1.5
+        shell: cmd
         
       - name: Upload test artifacts
         uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: |
-            unity_test_run.log
-            vehicle_position_comparison.csv
+            Logs\ci-simulation.log
+            Logs\PositionAccuracy\statistics_summary_*.txt
+            Logs\PositionAccuracy\position_accuracy_*.csv
           retention-days: 7 

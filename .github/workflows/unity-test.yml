@@ -59,9 +59,12 @@ jobs:
         
       - name: Run CI simulation
         run: |
-          $cmd = '.\run_unity_ci_simulation.bat -simulationSeconds 30 -unityPath "%UNITY_PATH%" --threshold 1.5'
-          Write-Host "[INFO] Executing $cmd"
-          Invoke-Expression $cmd
+          $unityPath = $Env:UNITY_PATH
+          if (-not $unityPath) {
+            throw "UNITY_PATH environment variable is not set"
+          }
+          Write-Host "[INFO] Using Unity executable at $unityPath"
+          & .\run_unity_ci_simulation.bat -simulationSeconds 30 -unityPath "$unityPath" --threshold 1.5
         shell: powershell
         
       - name: Upload test artifacts

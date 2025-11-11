@@ -42,6 +42,45 @@ Usage in CI/CD environments:
 PowerShell -ExecutionPolicy Bypass -File ci_setup.ps1
 ```
 
+### run_unity_ci_simulation.bat
+Runs the Unity editor in batch mode to execute the CI simulation entry point. Accepts optional arguments to pick a scene and control run duration. Requires the `UNITY_PATH` environment variable or the `-unityPath` argument to point at your Unity executable (e.g. `C:\Program Files\Unity\Hub\Editor\2022.3.20f1\Editor\Unity.exe`).
+
+Usage examples:
+```
+:: Common case with environment variable
+set UNITY_PATH="C:\Program Files\Unity\Hub\Editor\2022.3.20f1\Editor\Unity.exe"
+run_unity_ci_simulation.bat -scenePath Assets/Scenes/MainScene.unity -simulationSeconds 60
+
+:: Override editor path per call
+run_unity_ci_simulation.bat -unityPath "D:\Unity\Editor\Unity.exe" -scenePath Assets/Scenes/MainScene.unity -timeoutSeconds 600
+
+:: Observe the run in the editor UI
+run_unity_ci_simulation.bat -withGui -simulationSeconds 30
+
+:: Override accuracy threshold and Python interpreter
+run_unity_ci_simulation.bat -simulationSeconds 30 --threshold 1.2 --python "C:\\Python311\\python.exe"
+
+:: Skip the post-run accuracy validation phase
+run_unity_ci_simulation.bat --skipAccuracy
+```
+
+Unity CLI arguments are forwarded, so additional flags (such as `-buildTarget`) can be appended after the known options. The script already issues an orderly shutdown via the CI entry point, so you normally do **not** need to add `-quit`.
+
+After Unity exits successfully the batch file launches `check_position_accuracy_ci.py` (unless `--skipAccuracy` is specified). The analyzer prints per-vehicle mean position errors and turns the overall exit code non-zero when any vehicle exceeds the configured threshold.
+
+### check_position_accuracy_ci.py
+Parses the newest summary text under `Logs/PositionAccuracy` (files named `statistics_summary_*.txt`) and falls back to CSV logs if no summary is found. It checks the mean `PositionError` for each vehicle and returns a non-zero exit code when any vehicle exceeds the target threshold (default `1.5 m`).
+
+Usage examples:
+```
+python check_position_accuracy_ci.py
+python check_position_accuracy_ci.py --threshold 1.0
+python check_position_accuracy_ci.py --log-file Logs/PositionAccuracy/position_accuracy_2025-11-11_13-46-28.csv --threshold 1.25
+python check_position_accuracy_ci.py --log-file Logs/PositionAccuracy/statistics_summary_2025-11-11_14-03-39.txt
+```
+
+Integrate this into CI after the simulation step so pipelines fail automatically when average positional accuracy drifts above the agreed limit.
+
 ## Requirements
 
 - Windows 10/11

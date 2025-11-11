@@ -58,8 +58,11 @@ jobs:
         shell: powershell
         
       - name: Run CI simulation
-        run: .\run_unity_ci_simulation.bat -simulationSeconds 30 -unityPath "%UNITY_PATH%" --threshold 1.5 --withGui
-        shell: cmd
+        run: |
+          $cmd = '.\run_unity_ci_simulation.bat -simulationSeconds 30 -unityPath "%UNITY_PATH%" --threshold 1.5'
+          Write-Host "[INFO] Executing $cmd"
+          Invoke-Expression $cmd
+        shell: powershell
         
       - name: Upload test artifacts
         uses: actions/upload-artifact@v4

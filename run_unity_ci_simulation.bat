@@ -14,6 +14,7 @@ set "RUN_ACCURACY=1"
 set "ACCURACY_THRESHOLD=1.5"
 set "PYTHON_CMD=python"
 set "ACCURACY_SCRIPT=%PROJECT_DIR%\check_position_accuracy_ci.py"
+set "PROGRESS_INTERVAL=60"
 
 :parse
 if "%~1"=="" goto run
@@ -70,6 +71,12 @@ if /I "%~1"=="--accuracyScript" (
     shift
     goto parse
 )
+if /I "%~1"=="--progressInterval" (
+    set "PROGRESS_INTERVAL=%~2"
+    shift
+    shift
+    goto parse
+)
 set "EXTRA_ARGS=!EXTRA_ARGS! %~1"
 shift
 goto parse
@@ -89,10 +96,14 @@ if defined SIM_SECONDS set "UNITY_ARGS=!UNITY_ARGS! -simulationSeconds %SIM_SECO
 if defined TIMEOUT_SECONDS set "UNITY_ARGS=!UNITY_ARGS! -timeoutSeconds %TIMEOUT_SECONDS%"
 if defined EXTRA_ARGS set "UNITY_ARGS=!UNITY_ARGS! %EXTRA_ARGS%"
 
+set "UNITY_ARGS_ENV=!UNITY_ARGS!"
+if not defined PROGRESS_INTERVAL set "PROGRESS_INTERVAL=60"
+set "PS_CMD=^& { $start = Get-Date; $interval = 60; $parsed = 0; if ([int]::TryParse($env:PROGRESS_INTERVAL, [ref]$parsed) -and $parsed -gt 0) { $interval = $parsed } $psi = New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName = $env:UNITY_PATH; $psi.Arguments = $env:UNITY_ARGS_ENV; $psi.UseShellExecute = $false; $proc = [System.Diagnostics.Process]::Start($psi); if (-not $proc) { Write-Host '[ERROR] Failed to start Unity process.'; exit 1 } try { while (-not $proc.HasExited) { Start-Sleep -Seconds $interval; if ($proc.HasExited) { break } $elapsed = (Get-Date) - $start; Write-Host ([string]::Format('[INFO] Elapsed time: {0:hh\:mm\:ss}', $elapsed)); $proc.Refresh() } $proc.WaitForExit(); exit $proc.ExitCode } finally { $proc.Dispose() } }"
+
 echo [INFO] Launching Unity from %UNITY_PATH%
 echo [INFO] Scene: %SCENE_ARG%
-"%UNITY_PATH%" !UNITY_ARGS!
-set "EXITCODE=%ERRORLEVEL%"
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "%PS_CMD%"
+set "EXITCODE=!ERRORLEVEL!"
 
 if not "%EXITCODE%"=="0" (
     echo [ERROR] Unity exited with code %EXITCODE%.

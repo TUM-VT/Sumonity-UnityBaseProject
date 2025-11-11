@@ -58,7 +58,7 @@ jobs:
         shell: powershell
         
       - name: Run CI simulation
-        run: .\run_unity_ci_simulation.bat -simulationSeconds 30 -unityPath "%UNITY_PATH%" --threshold 1.5
+        run: .\run_unity_ci_simulation.bat -simulationSeconds 30 -unityPath "%UNITY_PATH%" --threshold 1.5 --withGui
         shell: cmd
         
       - name: Upload test artifacts

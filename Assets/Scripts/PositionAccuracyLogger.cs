@@ -156,7 +156,10 @@ namespace tum_car_controller
                 currentLogFileName = Path.Combine(fullPath, $"position_accuracy_{timestamp}.csv");
 
                 // Initialize live log writer for continuous writing
+                // CRITICAL: Enable AutoFlush to ensure data is written immediately to disk
+                // This prevents data loss if Unity process is killed without proper shutdown
                 liveLogWriter = new StreamWriter(currentLogFileName, false);
+                liveLogWriter.AutoFlush = true;
                 WriteCSVHeader(liveLogWriter);
 
                 isInitialized = true;

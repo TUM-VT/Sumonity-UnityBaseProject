@@ -303,9 +303,33 @@ if (-not $initialized) {
 Write-Host "Running scene for $TimeToRun seconds..." -ForegroundColor Cyan
 Start-Sleep -Seconds $TimeToRun
 
-# Kill the Unity process after the specified time
-Write-Host "Stopping Unity process..." -ForegroundColor Cyan
-Stop-Process -Id $process.Id -Force
+# Gracefully stop the Unity process to allow OnApplicationQuit() to run
+Write-Host "Stopping Unity process gracefully..." -ForegroundColor Cyan
+
+# Try graceful shutdown first
+try {
+    # Send close window message
+    $process.CloseMainWindow() | Out-Null
+    
+    # Wait up to 30 seconds for Unity to exit gracefully
+    Write-Host "Waiting for Unity to finalize logging and exit..." -ForegroundColor Yellow
+    $waited = $process.WaitForExit(30000)  # 30 second timeout
+    
+    if ($waited) {
+        Write-Host "Unity exited gracefully" -ForegroundColor Green
+    } else {
+        Write-Host "Unity did not exit within timeout, forcing shutdown..." -ForegroundColor Yellow
+        Stop-Process -Id $process.Id -Force
+        Write-Host "Unity process force-stopped" -ForegroundColor Yellow
+    }
+}
+catch {
+    Write-Host "Error during shutdown, forcing process termination..." -ForegroundColor Yellow
+    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+}
+
+# Give a moment for file system to sync
+Start-Sleep -Seconds 2
 Write-Host "Unity process stopped" -ForegroundColor Green
 
 # Function to parse the log file for errors

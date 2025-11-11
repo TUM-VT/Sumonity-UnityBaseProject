@@ -92,6 +92,18 @@ if not defined UNITY_PATH (
     exit /b 1
 )
 
+set "CHECK=!EXTRA_ARGS:--withGui=!"
+if /I not "!CHECK!"=="!EXTRA_ARGS!" (
+    set "EXTRA_ARGS=!CHECK!"
+    set "HEADLESS=0"
+)
+set "CHECK=!EXTRA_ARGS:-withGui=!"
+if /I not "!CHECK!"=="!EXTRA_ARGS!" (
+    set "EXTRA_ARGS=!CHECK!"
+    set "HEADLESS=0"
+)
+set "EXTRA_ARGS=!EXTRA_ARGS:  = !"
+
 if not exist "%PROJECT_DIR%\Logs" mkdir "%PROJECT_DIR%\Logs" >nul 2>&1
 set "LOG_FILE=%PROJECT_DIR%\Logs\ci-simulation.log"
 

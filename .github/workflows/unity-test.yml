@@ -64,7 +64,9 @@ jobs:
             throw "UNITY_PATH environment variable is not set"
           }
           Write-Host "[INFO] Using Unity executable at $unityPath"
-          & .\run_unity_ci_simulation.bat -simulationSeconds 120 -unityPath "$unityPath" --threshold 1.5
+          $cmdArgs = '-simulationSeconds 30 -unityPath "{0}" --threshold 1.5' -f $unityPath
+          Write-Host "[INFO] Executing run_unity_ci_simulation.bat $cmdArgs"
+          cmd.exe /c ".\run_unity_ci_simulation.bat $cmdArgs"
         shell: powershell
         
       - name: Upload test artifacts

@@ -93,28 +93,65 @@ def find_latest_log(log_dir: Path, pattern: Optional[str]) -> Path:
 
 
 def load_vehicle_errors(csv_path: Path) -> Dict[str, List[float]]:
+    debug(f"Loading CSV '{csv_path}'")
     with csv_path.open(newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
+        debug(f"CSV columns: {reader.fieldnames}")
+        if not reader.fieldnames:
+            raise ValueError(f"CSV '{csv_path}' has no header row")
         if "VehicleID" not in reader.fieldnames or "PositionError" not in reader.fieldnames:
             raise ValueError(
                 "CSV missing required columns 'VehicleID' and/or 'PositionError'"
             )
 
         errors: Dict[str, List[float]] = defaultdict(list)
+        row_preview: List[Dict[str, str]] = []
+        total_rows = 0
+        skipped_missing = 0
+        skipped_invalid = 0
         for row in reader:
+            total_rows += 1
+            if len(row_preview) < 5:
+                row_preview.append(dict(row))
             vid = row.get("VehicleID")
             err_text = row.get("PositionError")
             if not vid or err_text is None:
+                skipped_missing += 1
                 continue
             try:
                 error = float(err_text)
             except ValueError:
+                skipped_invalid += 1
                 # Skip malformed entries but keep scanning.
                 continue
             errors[vid].append(error)
 
+        if row_preview:
+            preview_lines = [str(item) for item in row_preview]
+            debug("CSV row preview:\n" + "\n".join(preview_lines))
+        else:
+            debug("CSV contained no data rows")
+
+        debug(
+            "CSV processing stats: total_rows={total_rows}, kept_rows={kept}, "
+            "skipped_missing={missing}, skipped_invalid={invalid}".format(
+                total_rows=total_rows,
+                kept=sum(len(v) for v in errors.values()),
+                missing=skipped_missing,
+                invalid=skipped_invalid,
+            )
+        )
+
         if not errors:
-            raise ValueError(f"No usable data rows found in {csv_path}")
+            raise ValueError(
+                "No usable data rows found in {path} (total_rows={total}, "
+                "skipped_missing={missing}, skipped_invalid={invalid})".format(
+                    path=csv_path,
+                    total=total_rows,
+                    missing=skipped_missing,
+                    invalid=skipped_invalid,
+                )
+            )
 
         return errors
 

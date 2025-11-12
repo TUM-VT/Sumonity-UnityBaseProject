@@ -61,6 +61,10 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     return parser.parse_args(list(argv))
 
 
+def debug(message: str) -> None:
+    print(f"[DEBUG] {message}")
+
+
 def find_latest_log(log_dir: Path, pattern: Optional[str]) -> Path:
     if not log_dir.exists():
         raise FileNotFoundError(f"Log directory not found: {log_dir}")
@@ -74,7 +78,14 @@ def find_latest_log(log_dir: Path, pattern: Optional[str]) -> Path:
     for glob_pattern in search_patterns:
         matches = sorted(log_dir.glob(glob_pattern), key=lambda p: p.stat().st_mtime)
         if matches:
-            return matches[-1]
+            chosen = matches[-1]
+            debug(
+                f"find_latest_log matched {len(matches)} file(s) with pattern '{glob_pattern}'; "
+                f"selected '{chosen}'"
+            )
+            return chosen
+        else:
+            debug(f"find_latest_log found no files for pattern '{glob_pattern}'")
 
     raise FileNotFoundError(
         f"No log files found in {log_dir} using patterns: {', '.join(search_patterns)}"
@@ -140,6 +151,21 @@ def parse_integer(text: str) -> int:
 
 
 def load_vehicle_stats_from_summary(path: Path) -> Tuple[List[VehicleStats], SummaryMetadata]:
+    if not path.exists():
+        raise FileNotFoundError(path)
+
+    size = path.stat().st_size
+    debug(f"Summary file '{path}' size: {size} bytes")
+
+    with path.open(encoding="utf-8") as handle:
+        lines = handle.readlines()
+
+    if lines:
+        preview = ''.join(line.rstrip('\n') + '\n' for line in lines[:10]).rstrip()
+        debug(f"Summary preview (first lines):\n{preview}")
+    else:
+        debug(f"Summary file '{path}' is empty")
+
     stats: List[VehicleStats] = []
     metadata = SummaryMetadata()
 
@@ -148,53 +174,52 @@ def load_vehicle_stats_from_summary(path: Path) -> Tuple[List[VehicleStats], Sum
 
     vehicle_pattern = re.compile(r"^Vehicle:\s*(.+)$", re.IGNORECASE)
 
-    with path.open(encoding="utf-8") as handle:
-        for raw_line in handle:
-            line = raw_line.strip()
-            if not line:
-                continue
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
 
-            if line.lower().startswith("generated:"):
-                metadata.generated_at = line.split(":", 1)[1].strip()
-                continue
+        if line.lower().startswith("generated:"):
+            metadata.generated_at = line.split(":", 1)[1].strip()
+            continue
 
-            if line.lower().startswith("total entries logged:"):
-                metadata.total_entries = parse_integer(line.split(":", 1)[1])
-                continue
+        if line.lower().startswith("total entries logged:"):
+            metadata.total_entries = parse_integer(line.split(":", 1)[1])
+            continue
 
-            if line.lower().startswith("active vehicles:"):
-                metadata.active_vehicles = parse_integer(line.split(":", 1)[1])
-                continue
+        if line.lower().startswith("active vehicles:"):
+            metadata.active_vehicles = parse_integer(line.split(":", 1)[1])
+            continue
 
-            if line.lower().startswith("average position error:"):
-                metadata.overall_mean = parse_decimal(line.split(":", 1)[1])
-                continue
+        if line.lower().startswith("average position error:"):
+            metadata.overall_mean = parse_decimal(line.split(":", 1)[1])
+            continue
 
-            if line.lower().startswith("maximum position error:"):
-                metadata.overall_max = parse_decimal(line.split(":", 1)[1])
-                continue
+        if line.lower().startswith("maximum position error:"):
+            metadata.overall_max = parse_decimal(line.split(":", 1)[1])
+            continue
 
-            vehicle_match = vehicle_pattern.match(line)
-            if vehicle_match:
-                vehicle_id = vehicle_match.group(1).strip()
-                samples = None
-                continue
+        vehicle_match = vehicle_pattern.match(line)
+        if vehicle_match:
+            vehicle_id = vehicle_match.group(1).strip()
+            samples = None
+            continue
 
-            if vehicle_id and line.lower().startswith("samples:"):
-                samples = parse_integer(line.split(":", 1)[1])
-                continue
+        if vehicle_id and line.lower().startswith("samples:"):
+            samples = parse_integer(line.split(":", 1)[1])
+            continue
 
-            if vehicle_id and line.lower().startswith("avg error:"):
-                mean_error = parse_decimal(line.split(":", 1)[1])
-                stats.append(
-                    VehicleStats(
-                        vehicle_id=vehicle_id,
-                        mean_error=mean_error,
-                        sample_count=samples or 0,
-                    )
+        if vehicle_id and line.lower().startswith("avg error:"):
+            mean_error = parse_decimal(line.split(":", 1)[1])
+            stats.append(
+                VehicleStats(
+                    vehicle_id=vehicle_id,
+                    mean_error=mean_error,
+                    sample_count=samples or 0,
                 )
-                vehicle_id = None
-                samples = None
+            )
+            vehicle_id = None
+            samples = None
 
     if not stats:
         raise ValueError(f"No vehicle statistics found in summary file '{path}'")
@@ -205,7 +230,20 @@ def load_vehicle_stats_from_summary(path: Path) -> Tuple[List[VehicleStats], Sum
     return stats, metadata
 
 
-def load_vehicle_stats(path: Path) -> Tuple[List[VehicleStats], SummaryMetadata]:
+def find_matching_csv(summary_path: Path) -> Optional[Path]:
+    timestamp = summary_path.stem.replace("statistics_summary_", "", 1)
+    if timestamp and timestamp != summary_path.stem:
+        candidate = summary_path.with_name(f"position_accuracy_{timestamp}.csv")
+        if candidate.exists():
+            return candidate
+
+    csv_files = sorted(summary_path.parent.glob(DEFAULT_CSV_GLOB), key=lambda p: p.stat().st_mtime)
+    if csv_files:
+        return csv_files[-1]
+    return None
+
+
+def load_vehicle_stats(path: Path) -> Tuple[Path, List[VehicleStats], SummaryMetadata]:
     suffix = path.suffix.lower()
     if suffix == ".csv":
         errors_by_vehicle = load_vehicle_errors(path)
@@ -219,10 +257,32 @@ def load_vehicle_stats(path: Path) -> Tuple[List[VehicleStats], SummaryMetadata]
         if all_errors:
             metadata.overall_mean = sum(all_errors) / len(all_errors)
             metadata.overall_max = max(all_errors)
-        return stats, metadata
+        return path, stats, metadata
 
     if suffix == ".txt":
-        return load_vehicle_stats_from_summary(path)
+        try:
+            stats, metadata = load_vehicle_stats_from_summary(path)
+            return path, stats, metadata
+        except ValueError as exc:
+            debug(f"Failed to parse summary '{path}': {exc}")
+            csv_fallback = find_matching_csv(path)
+            if csv_fallback:
+                debug(f"Attempting CSV fallback: '{csv_fallback}'")
+                debug(f"CSV fallback size: {csv_fallback.stat().st_size} bytes")
+                errors_by_vehicle = load_vehicle_errors(csv_fallback)
+                stats = compute_stats(errors_by_vehicle)
+                metadata = SummaryMetadata(
+                    total_entries=sum(len(samples) for samples in errors_by_vehicle.values()),
+                    active_vehicles=len(errors_by_vehicle),
+                )
+                all_errors = [err for samples in errors_by_vehicle.values() for err in samples]
+                if all_errors:
+                    metadata.overall_mean = sum(all_errors) / len(all_errors)
+                    metadata.overall_max = max(all_errors)
+                debug("CSV fallback succeeded.")
+                return csv_fallback, stats, metadata
+            debug("No CSV fallback available.")
+            raise
 
     raise ValueError(f"Unsupported file format: {path}")
 
@@ -256,18 +316,23 @@ def main(argv: Iterable[str]) -> int:
     args = parse_args(argv)
 
     try:
-        csv_path = args.log_file or find_latest_log(args.log_dir, args.pattern)
+        candidate_path = args.log_file or find_latest_log(args.log_dir, args.pattern)
     except FileNotFoundError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
 
+    if args.log_file:
+        debug(f"Using explicit log file '{candidate_path}'")
+    else:
+        debug(f"Using discovered log file '{candidate_path}'")
+
     try:
-        stats, metadata = load_vehicle_stats(csv_path)
+        log_path, stats, metadata = load_vehicle_stats(candidate_path)
     except (OSError, ValueError) as exc:
-        print(f"Error reading '{csv_path}': {exc}", file=sys.stderr)
+        print(f"Error: {exc}", file=sys.stderr)
         return 2
 
-    print_report(csv_path, stats, args.threshold, metadata)
+    print_report(log_path, stats, args.threshold, metadata)
 
     failing = [item for item in stats if item.mean_error >= args.threshold]
     if failing:

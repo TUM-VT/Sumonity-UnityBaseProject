@@ -3,14 +3,18 @@ param (
     [string]$UnityPath = "C:\Program Files\Unity\Hub\Editor\2022.3.8f1\Editor\Unity.exe",
     [string]$ScenePath = "Assets/Scenes/MainScene.unity",
     [string]$LogFile = "unity_test_run.log",
-    [int]$TimeToRun = 60,
+    [int]$TimeToRun = 90,
     [switch]$ForceCleanup = $true,
     [switch]$ScreenMode = $false,
     [switch]$VehiclePositionComparison = $true,
     [string]$PositionAccuracyDirectory = "Logs\PositionAccuracy",
     [double]$ErrorThreshold = 1.5,  # Updated to 1.5 meters for new logging system
     [string]$LogFilePath = "C:\Users\celsius\actions-runner\_work\Sumonity-UnityBaseProject\Sumonity-UnityBaseProject\unity_test_run.log",
-    [switch]$BypassInitCheck = $false
+    [switch]$BypassInitCheck = $false,
+    [string[]]$TraCIProcessNames = @("python.exe", "python3.exe", "pythonw.exe"),
+    [string[]]$TraCICommandMarkers = @("SumoTraCI", "socketServer.py", "traci"),
+    [int]$TraCIPort = 25001,
+    [string]$PythonExecutable = "python"
 )
 
 # Simple progress indicator
@@ -46,6 +50,127 @@ function Cleanup-UnityProcesses {
 # Run cleanup check without verbose messages
 Cleanup-UnityProcesses -Force $ForceCleanup
 
+# Detect the SUMO TraCI python bridge to confirm simulation playback state.
+function Test-TraCIProcess {
+    param(
+        [string[]]$ProcessNames,
+        [string[]]$CommandMarkers
+    )
+
+    if (-not $CommandMarkers -or $CommandMarkers.Count -eq 0) {
+        return $false
+    }
+
+    $nameFilters = @()
+    foreach ($rawPattern in $ProcessNames) {
+        if ([string]::IsNullOrWhiteSpace($rawPattern)) {
+            continue
+        }
+
+        $pattern = $rawPattern.Trim()
+
+        if ($pattern.Contains("*") -or $pattern.Contains("?")) {
+            $sqlPattern = $pattern.Replace("*", "%").Replace("?", "_")
+            $nameFilters += "Name LIKE '$sqlPattern'"
+        } elseif ($pattern.Contains("%") -or $pattern.Contains("_")) {
+            $nameFilters += "Name LIKE '$pattern'"
+        } else {
+            if (-not $pattern.EndsWith(".exe", [System.StringComparison]::OrdinalIgnoreCase)) {
+                $pattern = "$pattern.exe"
+            }
+            $nameFilters += "Name = '$pattern'"
+        }
+    }
+
+    if ($nameFilters.Count -eq 0) {
+        $nameFilters = @("Name LIKE 'python%.exe'")
+    }
+
+    $filterClause = [string]::Join(" OR ", $nameFilters)
+    $query = "SELECT ProcessId, CommandLine, Name FROM Win32_Process WHERE $filterClause"
+
+    try {
+        $processes = Get-CimInstance -Query $query -ErrorAction Stop
+    }
+    catch {
+        if (-not $global:TraCIProcessQueryWarning) {
+            Write-Host "Warning: Unable to inspect running processes for TraCI detection ($($_.Exception.Message))." -ForegroundColor Yellow
+            $global:TraCIProcessQueryWarning = $true
+        }
+        return $false
+    }
+
+    if (-not $processes) {
+        return $false
+    }
+
+    foreach ($process in $processes) {
+        $commandLine = $process.CommandLine
+        if ([string]::IsNullOrWhiteSpace($commandLine)) {
+            continue
+        }
+
+        foreach ($marker in $CommandMarkers) {
+            if ([string]::IsNullOrWhiteSpace($marker)) {
+                continue
+            }
+
+            if ($commandLine.IndexOf($marker, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                if (-not $global:TraCIProcessMessageDisplayed) {
+                    $exeName = $process.Name
+                    $processId = $process.ProcessId
+                    Write-Host "Detected TraCI Python process ($exeName, PID $processId) via marker '$marker'." -ForegroundColor Green
+                    $global:TraCIProcessMessageDisplayed = $true
+                }
+                return $true
+            }
+        }
+    }
+
+    return $false
+}
+
+function Test-TraCIRuntime {
+    param(
+        [string[]]$ProcessNames,
+        [string[]]$CommandMarkers,
+        [int]$Port
+    )
+
+    $processDetected = Test-TraCIProcess -ProcessNames $ProcessNames -CommandMarkers $CommandMarkers
+    if ($processDetected) {
+        return $true
+    }
+
+    try {
+        $connections = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+    }
+    catch [System.Management.Automation.CommandNotFoundException] {
+        if (-not $global:TraCIPortCommandWarning) {
+            Write-Host "Warning: Get-NetTCPConnection not available; TraCI socket detection disabled." -ForegroundColor Yellow
+            $global:TraCIPortCommandWarning = $true
+        }
+        return $false
+    }
+    catch {
+        if (-not $global:TraCIPortQueryWarning) {
+            Write-Host "Warning: Unable to query TraCI port state ($($_.Exception.Message))." -ForegroundColor Yellow
+            $global:TraCIPortQueryWarning = $true
+        }
+        return $false
+    }
+
+    if ($connections) {
+        if (-not $global:TraCIPortMessageDisplayed) {
+            Write-Host "Detected TraCI listener on 127.0.0.1:$Port." -ForegroundColor Green
+            $global:TraCIPortMessageDisplayed = $true
+        }
+        return $true
+    }
+
+    return $false
+}
+
 # Quickly check if Unity path exists
 if (-not (Test-Path $UnityPath)) {
     Write-Host "Error: Unity executable not found at $UnityPath" -ForegroundColor Red
@@ -54,6 +179,26 @@ if (-not (Test-Path $UnityPath)) {
 
 # Get the absolute path to the Unity project
 $ProjectPath = Resolve-Path "."
+
+# Resolve Unity log file path
+$unityLogPath = $LogFile
+if (-not [System.IO.Path]::IsPathRooted($unityLogPath)) {
+    $unityLogPath = Join-Path $ProjectPath $unityLogPath
+}
+
+$resolvedLogFilePath = $LogFilePath
+if ([string]::IsNullOrWhiteSpace($resolvedLogFilePath)) {
+    $resolvedLogFilePath = $unityLogPath
+} else {
+    if (-not [System.IO.Path]::IsPathRooted($resolvedLogFilePath)) {
+        $resolvedLogFilePath = Join-Path $ProjectPath $resolvedLogFilePath
+    }
+    $resolvedLogParent = Split-Path -Path $resolvedLogFilePath -Parent
+    if ($resolvedLogParent -and -not (Test-Path -Path $resolvedLogParent -PathType Container)) {
+        $resolvedLogFilePath = $unityLogPath
+    }
+}
+$LogFilePath = $resolvedLogFilePath
 
 # Remove Unity lock file if exists
 $tempPath = Join-Path $ProjectPath "Temp"
@@ -65,7 +210,7 @@ if (Test-Path $editorLockFile) {
 # Run Unity in batch mode
 Write-Host "Starting Unity process..." -ForegroundColor Cyan
 $process = Start-Process -FilePath $UnityPath `
-                        -ArgumentList "-projectPath", "`"$ProjectPath`"", "-logFile", "`"$LogFile`"", "-executeMethod", "AutomatedTesting.RunMainSceneTest" `
+                        -ArgumentList "-projectPath", "`"$ProjectPath`"", "-logFile", "`"$unityLogPath`"", "-executeMethod", "AutomatedTesting.RunMainSceneTest" `
                         -PassThru
                        
 if ($null -eq $process) {
@@ -79,6 +224,17 @@ function Test-UnityInitialization {
         [string]$LogFilePath
     )
     
+    $foundIndicators = @()
+    $playModeFound = $false
+
+    $traCIRuntimeActive = Test-TraCIRuntime -ProcessNames $TraCIProcessNames -CommandMarkers $TraCICommandMarkers -Port $TraCIPort
+    if ($traCIRuntimeActive -and ($foundIndicators -notcontains "TraCI runtime")) {
+        $foundIndicators += "TraCI runtime"
+    }
+    if ($traCIRuntimeActive) {
+        $playModeFound = $true
+    }
+
     if (-not (Test-Path $LogFilePath)) {
         # Only write this once, not repeatedly
         if (-not $global:logFileWarningDisplayed) {
@@ -86,7 +242,11 @@ function Test-UnityInitialization {
             Write-Host "Expected log path: $LogFilePath" -ForegroundColor Yellow
             $global:logFileWarningDisplayed = $true
         }
-        return $false
+        if ($playModeFound -and -not $global:initializationMessageDisplayed) {
+            Write-Host "PLAY MODE DETECTED: $($foundIndicators -join ', ')" -ForegroundColor Green
+            $global:initializationMessageDisplayed = $true
+        }
+        return $playModeFound
     }
     
     # Show that we found the log file on first read
@@ -106,6 +266,28 @@ function Test-UnityInitialization {
     if (-not $global:logLinesDisplayed) {
         Write-Host "`nRecent log entries (for debugging):" -ForegroundColor Cyan
         $logContent | Select-Object -Last 5 | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+        
+        # Also show what stage Unity is in
+        Write-Host "`nDetecting Unity initialization stage:" -ForegroundColor Cyan
+        if ($logContent -match "Rebuilding Library") {
+            Write-Host "  - Rebuilding asset library (this can take several minutes on first run)" -ForegroundColor Yellow
+        }
+        if ($logContent -match "Importing") {
+            Write-Host "  - Importing assets..." -ForegroundColor Yellow
+        }
+        if ($logContent -match "Compiling") {
+            Write-Host "  - Compiling scripts..." -ForegroundColor Yellow
+        }
+        if ($logContent -match "Initialize engine") {
+            Write-Host "  - Engine initialized" -ForegroundColor Green
+        }
+        if ($logContent -match "Loading scene" -or $logContent -match "Opening scene") {
+            Write-Host "  - Loading scene..." -ForegroundColor Yellow
+        }
+        if ($logContent -match "Entered play mode" -or $logContent -match "EnteredPlayMode") {
+            Write-Host "  - PLAY MODE ACTIVE" -ForegroundColor Green
+        }
+        
         $global:logLinesDisplayed = $true
     }
     
@@ -133,10 +315,12 @@ function Test-UnityInitialization {
             "Cert verify failed",
             "EditorUpdateCheck",
             "Licensing::Module",
+            "Licensing::Client",
             "Access token is unavailable",
             "Start importing .* using Guid\(",
             "ValidationExceptions\.json",
-            "UnityEngine\.Debug:LogError"
+            "UnityEngine\.Debug:LogError",
+            "FSBTool ERROR"
         )
 
         # Filter out common non-critical errors
@@ -154,60 +338,48 @@ function Test-UnityInitialization {
         }
     }
     
-    # Check for specific Unity ready indicators (more flexible patterns)
-    $readyIndicators = @(
-        "Unity Editor is ready",
-        "Scene loaded",
-        "All packages loaded",
-        "Project loaded",
-        "Initialization complete",
-        "Loaded scene",
-        "Successfully loaded",
-        "Started playing",
-        "Scene is active",
-        "Play mode started",
-        "PositionAccuracyLogger",
-        "AutomatedTesting",
-        "RunMainSceneTest",
-        "Initialize mono",
-        "GfxDevice:",
-        "Begin MonoManager"
+    # Check for specific Unity ready indicators - ONLY accept actual play mode entry
+    # In batch mode, Unity doesn't always output "Entered play mode", so we look for:
+    # 1. Explicit play mode messages (editor/some batch runs)
+    # 2. PositionAccuracyLogger initialization (our custom marker)
+    # 3. Python sys.path setup (indicates SUMO/scene is running)
+    # 4. Scene physics/simulation starting
+    # 5. External SUMO TraCI bridge (python process) spinning up alongside Unity
+    $playModeIndicators = @(
+        "Entered play mode",
+        "EnteredPlayMode",
+        "PositionAccuracyLogger.*Initialized",
+        "sys\.path = \['C:/Users",  # Python environment setup for SUMO
+        "Unloading.*unused Assets",  # Assets cleanup after scene load
+        "TrimDiskCacheJob"  # Disk cache cleanup happens after scene starts
     )
     
-    $readyCount = 0
-    $foundIndicators = @()
-    foreach ($indicator in $readyIndicators) {
+    foreach ($indicator in $playModeIndicators) {
         $matches = $logContent | Where-Object { $_ -match $indicator }
         if ($matches) {
-            $readyCount++
-            # Only add to foundIndicators if not already there (avoid duplicates)
+            $playModeFound = $true
             if ($foundIndicators -notcontains $indicator) {
                 $foundIndicators += $indicator
             }
         }
     }
     
-    # Only print once when initialization indicators are found
-    # Avoid printing this multiple times by using a global variable
-    if ($readyCount -gt 0 -and $foundIndicators.Count -gt 0 -and -not $global:initializationMessageDisplayed) {
-        Write-Host "Found $readyCount initialization indicator(s): $($foundIndicators -join ', ')" -ForegroundColor Green
+    # Only print once when play mode is detected
+    if ($playModeFound -and -not $global:initializationMessageDisplayed) {
+        Write-Host "PLAY MODE DETECTED: $($foundIndicators -join ', ')" -ForegroundColor Green
         $global:initializationMessageDisplayed = $true
     }
     
-    # More lenient check: Return true if we have any indicators OR scene is loaded OR enough log content
-    # This is because batch mode Unity may not output all the usual messages
-    $logContentHasMinimumSize = $logContent.Count -gt 20
-    
-    return (($initializationComplete -and $sceneLoaded -and -not $errorsFound) -or 
-            $readyCount -ge 2 -or 
-            ($logContentHasMinimumSize -and $sceneLoaded))
+    # Only return true if we have explicit play mode confirmation
+    # Don't accept engine initialization or scene loading as "ready" - must be in play mode
+    return $playModeFound
 }
 
 # Function to wait for Unity to fully initialize
 function Wait-ForUnityInitialization {
     param (
         [string]$LogFilePath,
-        [int]$TimeoutSeconds = 180  # Reduced to 3 minutes timeout
+        [int]$TimeoutSeconds = 1200  # 10 minutes timeout for first-time initialization
     )
     
     Write-Host "Waiting for Unity to fully initialize..." -ForegroundColor Cyan
@@ -221,6 +393,11 @@ function Wait-ForUnityInitialization {
     $global:logFileFoundDisplayed = $false
     $global:logLinesDisplayed = $false
     $global:initializationMessageDisplayed = $false
+    $global:TraCIProcessMessageDisplayed = $false
+    $global:TraCIProcessQueryWarning = $false
+    $global:TraCIPortMessageDisplayed = $false
+    $global:TraCIPortCommandWarning = $false
+    $global:TraCIPortQueryWarning = $false
     
     while ((Get-Date) -lt $timeout) {
         if (Test-UnityInitialization -LogFilePath $LogFilePath) {
@@ -232,7 +409,19 @@ function Wait-ForUnityInitialization {
         $now = Get-Date
         if (($now - $lastProgressDisplay).TotalSeconds -ge $progressInterval) {
             $elapsedTime = [math]::Floor(($now - $startTime).TotalSeconds)
-            Write-Host "Still waiting for Unity initialization... ($elapsedTime seconds elapsed)" -ForegroundColor Yellow
+            
+            # Show what Unity is doing
+            if (Test-Path $LogFilePath) {
+                $recentLines = Get-Content $LogFilePath -Tail 3 -ErrorAction SilentlyContinue
+                $lastLine = $recentLines | Select-Object -Last 1
+                if ($lastLine -and $lastLine.Trim() -ne "") {
+                    Write-Host "Still waiting... ($elapsedTime seconds) - Last activity: $($lastLine.Substring(0, [Math]::Min(100, $lastLine.Length)))" -ForegroundColor Yellow
+                } else {
+                    Write-Host "Still waiting for Unity initialization... ($elapsedTime seconds elapsed)" -ForegroundColor Yellow
+                }
+            } else {
+                Write-Host "Still waiting for Unity initialization... ($elapsedTime seconds elapsed)" -ForegroundColor Yellow
+            }
             $lastProgressDisplay = $now
         }
         
@@ -277,9 +466,33 @@ if (-not $initialized) {
 Write-Host "Running scene for $TimeToRun seconds..." -ForegroundColor Cyan
 Start-Sleep -Seconds $TimeToRun
 
-# Kill the Unity process after the specified time
-Write-Host "Stopping Unity process..." -ForegroundColor Cyan
-Stop-Process -Id $process.Id -Force
+# Gracefully stop the Unity process to allow OnApplicationQuit() to run
+Write-Host "Stopping Unity process gracefully..." -ForegroundColor Cyan
+
+# Try graceful shutdown first
+try {
+    # Send close window message
+    $process.CloseMainWindow() | Out-Null
+    
+    # Wait up to 30 seconds for Unity to exit gracefully
+    Write-Host "Waiting for Unity to finalize logging and exit..." -ForegroundColor Yellow
+    $waited = $process.WaitForExit(30000)  # 30 second timeout
+    
+    if ($waited) {
+        Write-Host "Unity exited gracefully" -ForegroundColor Green
+    } else {
+        Write-Host "Unity did not exit within timeout, forcing shutdown..." -ForegroundColor Yellow
+        Stop-Process -Id $process.Id -Force
+        Write-Host "Unity process force-stopped" -ForegroundColor Yellow
+    }
+}
+catch {
+    Write-Host "Error during shutdown, forcing process termination..." -ForegroundColor Yellow
+    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+}
+
+# Give a moment for file system to sync
+Start-Sleep -Seconds 2
 Write-Host "Unity process stopped" -ForegroundColor Green
 
 # Function to parse the log file for errors
@@ -306,6 +519,19 @@ function Analyze-LogFile {
 # Analyze the log after completion
 Analyze-LogFile -LogFilePath $LogFilePath
 
+# Additional diagnostic: Check for PositionAccuracyLogger messages
+Write-Host "`nChecking for Position Accuracy Logger initialization in log..." -ForegroundColor Cyan
+if (Test-Path $LogFilePath) {
+    $loggerMessages = Get-Content $LogFilePath | Select-String "PositionAccuracyLogger"
+    if ($loggerMessages) {
+        Write-Host "Found Position Accuracy Logger messages:" -ForegroundColor Green
+        $loggerMessages | ForEach-Object { Write-Host "  $_" -ForegroundColor Gray }
+    } else {
+        Write-Host "WARNING: No Position Accuracy Logger messages found in log" -ForegroundColor Yellow
+        Write-Host "This indicates the logger may not be initializing properly" -ForegroundColor Yellow
+    }
+}
+
 # Function to evaluate position accuracy statistics from new logging system
 function Evaluate-PositionAccuracyStatistics {
     param (
@@ -319,6 +545,25 @@ function Evaluate-PositionAccuracyStatistics {
     
     if (-not (Test-Path $DirectoryPath)) {
         Write-Host "Position accuracy directory not found at $DirectoryPath" -ForegroundColor Red
+        Write-Host "`nDiagnostic Information:" -ForegroundColor Yellow
+        Write-Host "  Checking parent directory..." -ForegroundColor Yellow
+        $parentDir = Split-Path $DirectoryPath -Parent
+        if (Test-Path $parentDir) {
+            Write-Host "  Parent directory exists: $parentDir" -ForegroundColor Green
+            Write-Host "  Contents:" -ForegroundColor Yellow
+            Get-ChildItem $parentDir | ForEach-Object { Write-Host "    - $($_.Name)" -ForegroundColor Gray }
+        } else {
+            Write-Host "  Parent directory does not exist: $parentDir" -ForegroundColor Red
+        }
+        
+        # Check if any CSV files were created in the root directory
+        Write-Host "`n  Checking for position accuracy CSV files in project root..." -ForegroundColor Yellow
+        $csvFiles = Get-ChildItem -Path $ProjectPath -Filter "position_accuracy_*.csv" -ErrorAction SilentlyContinue
+        if ($csvFiles) {
+            Write-Host "  Found CSV files in root directory (wrong location!):" -ForegroundColor Yellow
+            $csvFiles | ForEach-Object { Write-Host "    - $($_.Name)" -ForegroundColor Gray }
+        }
+        
         return $null
     }
     
@@ -416,10 +661,39 @@ if ($VehiclePositionComparison) {
     } elseif ($evalResult -eq $true) {
         Write-Host "Position accuracy test PASSED" -ForegroundColor Green
     } else {
-        Write-Host "Position accuracy test INCONCLUSIVE - No data available or parsing error" -ForegroundColor Yellow
-        Write-Host "This may indicate the simulation did not run long enough or logger was not initialized" -ForegroundColor Yellow
-        exit 1  # Exit with error code since we expect position data
+        Write-Host "Position accuracy summary not available; continuing with CI verification." -ForegroundColor Yellow
     }
+
+    $checkerScript = Join-Path $ProjectPath "check_position_accuracy_ci.py"
+    if (-not (Test-Path $checkerScript)) {
+        Write-Host "Error: CI position accuracy checker not found at $checkerScript" -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "Running CI position accuracy verification..." -ForegroundColor Cyan
+    $thresholdText = [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, "{0}", $ErrorThreshold)
+    $pythonArgs = @($checkerScript, "--log-dir", $positionDir, "--threshold", $thresholdText)
+
+    $exitCode = 0
+    Push-Location $ProjectPath
+    try {
+        & $PythonExecutable @pythonArgs
+        $exitCode = $LASTEXITCODE
+    }
+    catch {
+        Write-Host "Error running CI position accuracy checker: $($_.Exception.Message)" -ForegroundColor Red
+        $exitCode = 1
+    }
+    finally {
+        Pop-Location
+    }
+
+    if ($exitCode -ne 0) {
+        Write-Host "CI position accuracy verification FAILED (exit code $exitCode)." -ForegroundColor Red
+        exit $exitCode
+    }
+
+    Write-Host "CI position accuracy verification PASSED." -ForegroundColor Green
 }
 
 Write-Host "Script execution completed" -ForegroundColor Cyan 

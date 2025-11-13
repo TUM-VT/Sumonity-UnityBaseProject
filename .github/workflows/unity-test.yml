@@ -2,7 +2,7 @@ name: Unity Tests
 
 on:
   push:
-    branches: [ main, 'dev-ci-testing' ]
+    branches: [ main, 'dev-ci' ]
 
 env:
   BYPASS_UNITY_INIT: $false  # Set to $true to bypass initialization check if needed
@@ -57,10 +57,44 @@ jobs:
           echo "UNITY_PATH=$UnityPath" >> $env:GITHUB_ENV
         shell: powershell
         
-      - name: Run Unity tests
+      - name: Run CI simulation
         run: |
-          $bypassInit = [System.Convert]::ToBoolean("${{ env.BYPASS_UNITY_INIT }}")
-          .\run_scene_automated.ps1 -UnityPath "${{ env.UNITY_PATH }}" -TimeToRun 120 -LogFilePath "${{ github.workspace }}\unity_test_run.log" $(if ($bypassInit) { "-BypassInitCheck" })
+          $unityPath = $Env:UNITY_PATH
+          if (-not $unityPath) {
+            throw "UNITY_PATH environment variable is not set"
+          }
+          Write-Host "[INFO] Using Unity executable at $unityPath"
+
+          $positionLogDir = Join-Path (Get-Location) "Logs\PositionAccuracy"
+          if (-not (Test-Path $positionLogDir)) {
+            Write-Host "[INFO] Creating position accuracy directory at $positionLogDir"
+            New-Item -Path $positionLogDir -ItemType Directory -Force | Out-Null
+          }
+
+          $logFile = "unity_test_run.log"
+          if (Test-Path $logFile) {
+            Write-Host "[INFO] Removing previous Unity log file $logFile"
+            Remove-Item -Path $logFile -Force -ErrorAction SilentlyContinue
+          }
+
+          $logFilePath = Join-Path (Get-Location) $logFile
+          Write-Host "[INFO] Invoking run_scene_automated.ps1"
+          $params = @{
+            UnityPath = $unityPath
+            LogFile = $logFile
+            LogFilePath = $logFilePath
+            ErrorThreshold = 1.5
+          }
+          if ($Env:BYPASS_UNITY_INIT -eq '$true') {
+            Write-Host "[INFO] Bypass Unity initialization requested"
+            $params["BypassInitCheck"] = $true
+          }
+
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\run_scene_automated.ps1 @params
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) {
+            throw "run_scene_automated.ps1 failed with exit code $exitCode"
+          }
         shell: powershell
         
       - name: Upload test artifacts
@@ -68,6 +102,7 @@ jobs:
         with:
           name: test-results
           path: |
-            unity_test_run.log
-            vehicle_position_comparison.csv
+            Logs\ci-simulation.log
+            Logs\PositionAccuracy\statistics_summary_*.txt
+            Logs\PositionAccuracy\position_accuracy_*.csv
           retention-days: 7 

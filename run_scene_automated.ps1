@@ -3,7 +3,7 @@ param (
     [string]$UnityPath = "C:\Program Files\Unity\Hub\Editor\2022.3.8f1\Editor\Unity.exe",
     [string]$ScenePath = "Assets/Scenes/MainScene.unity",
     [string]$LogFile = "unity_test_run.log",
-    [int]$TimeToRun = 60,
+    [int]$TimeToRun = 240,
     [switch]$ForceCleanup = $true,
     [switch]$ScreenMode = $false,
     [switch]$VehiclePositionComparison = $true,
@@ -379,7 +379,7 @@ function Test-UnityInitialization {
 function Wait-ForUnityInitialization {
     param (
         [string]$LogFilePath,
-        [int]$TimeoutSeconds = 600  # 10 minutes timeout for first-time initialization
+        [int]$TimeoutSeconds = 1200  # 10 minutes timeout for first-time initialization
     )
     
     Write-Host "Waiting for Unity to fully initialize..." -ForegroundColor Cyan

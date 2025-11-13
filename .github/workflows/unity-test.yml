@@ -65,12 +65,6 @@ jobs:
           }
           Write-Host "[INFO] Using Unity executable at $unityPath"
 
-          $positionLogDir = Join-Path (Get-Location) "Logs\PositionAccuracy"
-          if (-not (Test-Path $positionLogDir)) {
-            Write-Host "[INFO] Creating position accuracy directory at $positionLogDir"
-            New-Item -Path $positionLogDir -ItemType Directory -Force | Out-Null
-          }
-
           $logFile = "unity_test_run.log"
           if (Test-Path $logFile) {
             Write-Host "[INFO] Removing previous Unity log file $logFile"

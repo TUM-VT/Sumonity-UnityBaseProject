@@ -83,7 +83,6 @@ jobs:
             UnityPath = $unityPath
             LogFile = $logFile
             LogFilePath = $logFilePath
-            VehiclePositionComparison = $true
             ErrorThreshold = 1.5
           }
           if ($Env:BYPASS_UNITY_INIT -eq '$true') {

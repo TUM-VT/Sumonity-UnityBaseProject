@@ -3,7 +3,7 @@ param (
     [string]$UnityPath = "C:\Program Files\Unity\Hub\Editor\2022.3.8f1\Editor\Unity.exe",
     [string]$ScenePath = "Assets/Scenes/MainScene.unity",
     [string]$LogFile = "unity_test_run.log",
-    [int]$TimeToRun = 240,
+    [int]$TimeToRun = 90,
     [switch]$ForceCleanup = $true,
     [switch]$ScreenMode = $false,
     [switch]$VehiclePositionComparison = $true,

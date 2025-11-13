@@ -95,70 +95,6 @@ if ($vcsCommand) {
         }
     } catch {
         Write-Host "Error parsing or using assets.repos file: $_"
-        Write-Host "Using hardcoded repository information as fallback..."
-        
-        # Define repositories from assets.repos manually as fallback
-        $repositories = @(
-            @{
-                path = "Assets/Sumonity"
-                url = "https://github.com/TUM-VT/Sumonity.git"
-                branch = "dev-version-2"
-            },
-            @{
-                path = "Assets/BicycleModel"
-                url = "https://github.com/TUM-VT/Sumonity-UnityModelTemplate.git"
-                branch = "bicycle"
-            },
-            @{
-                path = "Assets/CarModel"
-                url = "https://github.com/TUM-VT/Sumonity-UnityModelTemplate.git" 
-                branch = "car"
-            },
-            @{
-                path = "Assets/BusModel"
-                url = "https://github.com/TUM-VT/Sumonity-UnityModelTemplate.git"
-                branch = "bus"
-            },
-            @{
-                path = "Assets/TaxiModel"
-                url = "https://github.com/TUM-VT/Sumonity-UnityModelTemplate.git"
-                branch = "taxi"
-            },
-            @{
-                path = "Assets/parkedvehiclespawner"
-                url = "https://github.com/TUM-VT/Sumonity-ParkedVehicleSpawner.git"
-                branch = "main"
-            },
-            @{
-                path = "Assets/PedestrianModel"
-                url = "https://github.com/TUM-VT/Sumonity-PedestrianModel.git"
-                branch = "main"
-            }
-        )
-
-        foreach ($repo in $repositories) {
-            if (-not (Test-Path $repo.path)) {
-                Write-Host "Cloning repository to $($repo.path)..."
-                New-Item -ItemType Directory -Path $repo.path -Force | Out-Null
-                git clone -b $repo.branch $repo.url $repo.path
-            } else {
-                Write-Host "Directory $($repo.path) already exists, skipping..."
-            }
-        }
-
-        # Special case for nested repository
-        if (Test-Path "Assets/Sumonity") {
-            $sumoTraciPath = "Assets/Sumonity/SumoTraCI"
-            if (-not (Test-Path $sumoTraciPath)) {
-                New-Item -ItemType Directory -Path $sumoTraciPath -Force | Out-Null
-            }
-            
-            $sumoProjectPath = "Assets/Sumonity/SumoTraCI/sumoProject"
-            if (-not (Test-Path $sumoProjectPath)) {
-                Write-Host "Cloning sumoProject repository..."
-                git clone -b main https://github.com/TUM-VT/Sumonity-SumoProject.git $sumoProjectPath
-            }
-        }
     }
 }
 
@@ -166,10 +102,6 @@ if ($vcsCommand) {
 if (-not (Test-Path "Assets/3d_model")) {
     New-Item -ItemType Directory -Path "Assets/3d_model" -Force
 }
-
-# Download 3D model
-Write-Host "Downloading 3D model..."
-# Invoke-WebRequest -Uri "https://gitlab.lrz.de/tum-gis/tum2twin-datasets/-/raw/0ec6f8d87cfe58ac03bdae2c690632c08fd3d625/fbx/tum_main_campus.fbx" -OutFile "Assets/3d_model/tum_main_campus.fbx"
 
 # Setup Sumo Python environment
 Write-Host "Setting up Sumo Python environment..."

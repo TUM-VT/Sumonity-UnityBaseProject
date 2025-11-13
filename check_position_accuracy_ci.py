@@ -22,6 +22,23 @@ DEFAULT_CSV_GLOB = "position_accuracy_*.csv"
 DEFAULT_SUMMARY_GLOB = "statistics_summary_*.txt"
 DEFAULT_THRESHOLD = 1.5
 
+EXPECTED_COLUMNS = [
+    "Timestamp",
+    "VehicleID",
+    "UnityX",
+    "UnityY",
+    "UnityZ",
+    "SumoX",
+    "SumoY",
+    "SumoZ",
+    "PositionError",
+    "LateralError",
+    "LongitudinalError",
+    "Speed",
+    "SteeringAngle",
+]
+NUMERIC_COLUMNS = {column for column in EXPECTED_COLUMNS if column != "VehicleID"}
+
 
 @dataclass
 class VehicleStats:
@@ -92,39 +109,113 @@ def find_latest_log(log_dir: Path, pattern: Optional[str]) -> Path:
     )
 
 
+def _should_join_decimal_part(value: str, next_token: str) -> bool:
+    if not next_token:
+        return False
+    value = value.strip()
+    next_token = next_token.strip()
+    if not value:
+        return False
+    if '.' in value:
+        return False
+    stripped_value = value.lstrip("+-")
+    if not stripped_value.isdigit():
+        return False
+    if not next_token.isdigit():
+        return False
+    return True
+
+
+def _parse_row(tokens: List[str], row_number: int) -> Dict[str, float | str]:
+    values: Dict[str, float | str] = {}
+    index = 0
+    token_count = len(tokens)
+
+    for column in EXPECTED_COLUMNS:
+        if index >= token_count:
+            raise ValueError(
+                f"Row {row_number}: insufficient tokens. Expected column '{column}' at position {index}, but row ended early."
+            )
+
+        raw_token = tokens[index].strip()
+
+        if column == "VehicleID":
+            values[column] = raw_token
+            index += 1
+            continue
+
+        value_token = raw_token
+        while index + 1 < token_count and _should_join_decimal_part(value_token, tokens[index + 1]):
+            value_token = f"{value_token}.{tokens[index + 1].strip()}"
+            index += 1
+
+        try:
+            numeric_value = float(value_token.replace(',', '.'))
+        except ValueError as exc:
+            raise ValueError(
+                f"Row {row_number}: could not parse numeric value for '{column}' from token '{value_token}'"
+            ) from exc
+
+        values[column] = numeric_value
+        index += 1
+
+    return values
+
+
 def load_vehicle_errors(csv_path: Path) -> Dict[str, List[float]]:
     debug(f"Loading CSV '{csv_path}'")
     with csv_path.open(newline="", encoding="utf-8-sig") as handle:
-        reader = csv.DictReader(handle)
-        debug(f"CSV columns: {reader.fieldnames}")
-        if not reader.fieldnames:
-            raise ValueError(f"CSV '{csv_path}' has no header row")
-        if "VehicleID" not in reader.fieldnames or "PositionError" not in reader.fieldnames:
-            raise ValueError(
-                "CSV missing required columns 'VehicleID' and/or 'PositionError'"
-            )
+        reader = csv.reader(handle)
+        try:
+            header = next(reader)
+        except StopIteration as exc:
+            raise ValueError(f"CSV '{csv_path}' is empty") from exc
+
+        if header[: len(EXPECTED_COLUMNS)] != EXPECTED_COLUMNS:
+            debug(f"CSV header encountered: {header}")
+            missing = [col for col in EXPECTED_COLUMNS if col not in header]
+            if missing:
+                raise ValueError(
+                    "CSV missing required columns: {missing_cols}".format(
+                        missing_cols=", ".join(missing)
+                    )
+                )
 
         errors: Dict[str, List[float]] = defaultdict(list)
-        row_preview: List[Dict[str, str]] = []
+        row_preview: List[Dict[str, float | str]] = []
         total_rows = 0
         skipped_missing = 0
         skipped_invalid = 0
-        for row in reader:
+
+        for row_number, tokens in enumerate(reader, start=2):
+            if not tokens:
+                continue
+            if all(not token.strip() for token in tokens):
+                continue
+
             total_rows += 1
+
+            try:
+                parsed_row = _parse_row(tokens, row_number)
+            except ValueError as exc:
+                skipped_invalid += 1
+                debug(str(exc))
+                continue
+
             if len(row_preview) < 5:
-                row_preview.append(dict(row))
-            vid = row.get("VehicleID")
-            err_text = row.get("PositionError")
-            if not vid or err_text is None:
+                row_preview.append(dict(parsed_row))
+
+            vid = parsed_row.get("VehicleID")
+            if not vid:
                 skipped_missing += 1
                 continue
-            try:
-                error = float(err_text)
-            except ValueError:
-                skipped_invalid += 1
-                # Skip malformed entries but keep scanning.
+
+            position_error = parsed_row.get("PositionError")
+            if position_error is None:
+                skipped_missing += 1
                 continue
-            errors[vid].append(error)
+
+            errors[vid].append(float(position_error))
 
         if row_preview:
             preview_lines = [str(item) for item in row_preview]
@@ -237,7 +328,7 @@ def load_vehicle_stats_from_summary(path: Path) -> Tuple[List[VehicleStats], Sum
             continue
 
         vehicle_match = vehicle_pattern.match(line)
-        if vehicle_match:
+        if (vehicle_match):
             vehicle_id = vehicle_match.group(1).strip()
             samples = None
             continue
@@ -289,7 +380,6 @@ def load_vehicle_stats(path: Path) -> Tuple[Path, List[VehicleStats], SummaryMet
             total_entries=sum(len(samples) for samples in errors_by_vehicle.values()),
             active_vehicles=len(errors_by_vehicle),
         )
-        # Compute aggregate metrics.
         all_errors = [err for samples in errors_by_vehicle.values() for err in samples]
         if all_errors:
             metadata.overall_mean = sum(all_errors) / len(all_errors)

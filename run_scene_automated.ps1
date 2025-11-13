@@ -10,7 +10,11 @@ param (
     [string]$PositionAccuracyDirectory = "Logs\PositionAccuracy",
     [double]$ErrorThreshold = 1.5,  # Updated to 1.5 meters for new logging system
     [string]$LogFilePath = "C:\Users\celsius\actions-runner\_work\Sumonity-UnityBaseProject\Sumonity-UnityBaseProject\unity_test_run.log",
-    [switch]$BypassInitCheck = $false
+    [switch]$BypassInitCheck = $false,
+    [string[]]$TraCIProcessNames = @("python.exe", "python3.exe", "pythonw.exe"),
+    [string[]]$TraCICommandMarkers = @("SumoTraCI", "socketServer.py", "traci"),
+    [int]$TraCIPort = 25001,
+    [string]$PythonExecutable = "python"
 )
 
 # Simple progress indicator
@@ -46,6 +50,127 @@ function Cleanup-UnityProcesses {
 # Run cleanup check without verbose messages
 Cleanup-UnityProcesses -Force $ForceCleanup
 
+# Detect the SUMO TraCI python bridge to confirm simulation playback state.
+function Test-TraCIProcess {
+    param(
+        [string[]]$ProcessNames,
+        [string[]]$CommandMarkers
+    )
+
+    if (-not $CommandMarkers -or $CommandMarkers.Count -eq 0) {
+        return $false
+    }
+
+    $nameFilters = @()
+    foreach ($rawPattern in $ProcessNames) {
+        if ([string]::IsNullOrWhiteSpace($rawPattern)) {
+            continue
+        }
+
+        $pattern = $rawPattern.Trim()
+
+        if ($pattern.Contains("*") -or $pattern.Contains("?")) {
+            $sqlPattern = $pattern.Replace("*", "%").Replace("?", "_")
+            $nameFilters += "Name LIKE '$sqlPattern'"
+        } elseif ($pattern.Contains("%") -or $pattern.Contains("_")) {
+            $nameFilters += "Name LIKE '$pattern'"
+        } else {
+            if (-not $pattern.EndsWith(".exe", [System.StringComparison]::OrdinalIgnoreCase)) {
+                $pattern = "$pattern.exe"
+            }
+            $nameFilters += "Name = '$pattern'"
+        }
+    }
+
+    if ($nameFilters.Count -eq 0) {
+        $nameFilters = @("Name LIKE 'python%.exe'")
+    }
+
+    $filterClause = [string]::Join(" OR ", $nameFilters)
+    $query = "SELECT ProcessId, CommandLine, Name FROM Win32_Process WHERE $filterClause"
+
+    try {
+        $processes = Get-CimInstance -Query $query -ErrorAction Stop
+    }
+    catch {
+        if (-not $global:TraCIProcessQueryWarning) {
+            Write-Host "Warning: Unable to inspect running processes for TraCI detection ($($_.Exception.Message))." -ForegroundColor Yellow
+            $global:TraCIProcessQueryWarning = $true
+        }
+        return $false
+    }
+
+    if (-not $processes) {
+        return $false
+    }
+
+    foreach ($process in $processes) {
+        $commandLine = $process.CommandLine
+        if ([string]::IsNullOrWhiteSpace($commandLine)) {
+            continue
+        }
+
+        foreach ($marker in $CommandMarkers) {
+            if ([string]::IsNullOrWhiteSpace($marker)) {
+                continue
+            }
+
+            if ($commandLine.IndexOf($marker, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                if (-not $global:TraCIProcessMessageDisplayed) {
+                    $exeName = $process.Name
+                    $processId = $process.ProcessId
+                    Write-Host "Detected TraCI Python process ($exeName, PID $processId) via marker '$marker'." -ForegroundColor Green
+                    $global:TraCIProcessMessageDisplayed = $true
+                }
+                return $true
+            }
+        }
+    }
+
+    return $false
+}
+
+function Test-TraCIRuntime {
+    param(
+        [string[]]$ProcessNames,
+        [string[]]$CommandMarkers,
+        [int]$Port
+    )
+
+    $processDetected = Test-TraCIProcess -ProcessNames $ProcessNames -CommandMarkers $CommandMarkers
+    if ($processDetected) {
+        return $true
+    }
+
+    try {
+        $connections = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+    }
+    catch [System.Management.Automation.CommandNotFoundException] {
+        if (-not $global:TraCIPortCommandWarning) {
+            Write-Host "Warning: Get-NetTCPConnection not available; TraCI socket detection disabled." -ForegroundColor Yellow
+            $global:TraCIPortCommandWarning = $true
+        }
+        return $false
+    }
+    catch {
+        if (-not $global:TraCIPortQueryWarning) {
+            Write-Host "Warning: Unable to query TraCI port state ($($_.Exception.Message))." -ForegroundColor Yellow
+            $global:TraCIPortQueryWarning = $true
+        }
+        return $false
+    }
+
+    if ($connections) {
+        if (-not $global:TraCIPortMessageDisplayed) {
+            Write-Host "Detected TraCI listener on 127.0.0.1:$Port." -ForegroundColor Green
+            $global:TraCIPortMessageDisplayed = $true
+        }
+        return $true
+    }
+
+    return $false
+}
+
 # Quickly check if Unity path exists
 if (-not (Test-Path $UnityPath)) {
     Write-Host "Error: Unity executable not found at $UnityPath" -ForegroundColor Red
@@ -54,6 +179,26 @@ if (-not (Test-Path $UnityPath)) {
 
 # Get the absolute path to the Unity project
 $ProjectPath = Resolve-Path "."
+
+# Resolve Unity log file path
+$unityLogPath = $LogFile
+if (-not [System.IO.Path]::IsPathRooted($unityLogPath)) {
+    $unityLogPath = Join-Path $ProjectPath $unityLogPath
+}
+
+$resolvedLogFilePath = $LogFilePath
+if ([string]::IsNullOrWhiteSpace($resolvedLogFilePath)) {
+    $resolvedLogFilePath = $unityLogPath
+} else {
+    if (-not [System.IO.Path]::IsPathRooted($resolvedLogFilePath)) {
+        $resolvedLogFilePath = Join-Path $ProjectPath $resolvedLogFilePath
+    }
+    $resolvedLogParent = Split-Path -Path $resolvedLogFilePath -Parent
+    if ($resolvedLogParent -and -not (Test-Path -Path $resolvedLogParent -PathType Container)) {
+        $resolvedLogFilePath = $unityLogPath
+    }
+}
+$LogFilePath = $resolvedLogFilePath
 
 # Remove Unity lock file if exists
 $tempPath = Join-Path $ProjectPath "Temp"
@@ -65,7 +210,7 @@ if (Test-Path $editorLockFile) {
 # Run Unity in batch mode
 Write-Host "Starting Unity process..." -ForegroundColor Cyan
 $process = Start-Process -FilePath $UnityPath `
-                        -ArgumentList "-projectPath", "`"$ProjectPath`"", "-logFile", "`"$LogFile`"", "-executeMethod", "AutomatedTesting.RunMainSceneTest" `
+                        -ArgumentList "-projectPath", "`"$ProjectPath`"", "-logFile", "`"$unityLogPath`"", "-executeMethod", "AutomatedTesting.RunMainSceneTest" `
                         -PassThru
                        
 if ($null -eq $process) {
@@ -79,6 +224,17 @@ function Test-UnityInitialization {
         [string]$LogFilePath
     )
     
+    $foundIndicators = @()
+    $playModeFound = $false
+
+    $traCIRuntimeActive = Test-TraCIRuntime -ProcessNames $TraCIProcessNames -CommandMarkers $TraCICommandMarkers -Port $TraCIPort
+    if ($traCIRuntimeActive -and ($foundIndicators -notcontains "TraCI runtime")) {
+        $foundIndicators += "TraCI runtime"
+    }
+    if ($traCIRuntimeActive) {
+        $playModeFound = $true
+    }
+
     if (-not (Test-Path $LogFilePath)) {
         # Only write this once, not repeatedly
         if (-not $global:logFileWarningDisplayed) {
@@ -86,7 +242,11 @@ function Test-UnityInitialization {
             Write-Host "Expected log path: $LogFilePath" -ForegroundColor Yellow
             $global:logFileWarningDisplayed = $true
         }
-        return $false
+        if ($playModeFound -and -not $global:initializationMessageDisplayed) {
+            Write-Host "PLAY MODE DETECTED: $($foundIndicators -join ', ')" -ForegroundColor Green
+            $global:initializationMessageDisplayed = $true
+        }
+        return $playModeFound
     }
     
     # Show that we found the log file on first read
@@ -184,6 +344,7 @@ function Test-UnityInitialization {
     # 2. PositionAccuracyLogger initialization (our custom marker)
     # 3. Python sys.path setup (indicates SUMO/scene is running)
     # 4. Scene physics/simulation starting
+    # 5. External SUMO TraCI bridge (python process) spinning up alongside Unity
     $playModeIndicators = @(
         "Entered play mode",
         "EnteredPlayMode",
@@ -192,9 +353,6 @@ function Test-UnityInitialization {
         "Unloading.*unused Assets",  # Assets cleanup after scene load
         "TrimDiskCacheJob"  # Disk cache cleanup happens after scene starts
     )
-    
-    $playModeFound = $false
-    $foundIndicators = @()
     
     foreach ($indicator in $playModeIndicators) {
         $matches = $logContent | Where-Object { $_ -match $indicator }
@@ -235,6 +393,11 @@ function Wait-ForUnityInitialization {
     $global:logFileFoundDisplayed = $false
     $global:logLinesDisplayed = $false
     $global:initializationMessageDisplayed = $false
+    $global:TraCIProcessMessageDisplayed = $false
+    $global:TraCIProcessQueryWarning = $false
+    $global:TraCIPortMessageDisplayed = $false
+    $global:TraCIPortCommandWarning = $false
+    $global:TraCIPortQueryWarning = $false
     
     while ((Get-Date) -lt $timeout) {
         if (Test-UnityInitialization -LogFilePath $LogFilePath) {
@@ -498,10 +661,39 @@ if ($VehiclePositionComparison) {
     } elseif ($evalResult -eq $true) {
         Write-Host "Position accuracy test PASSED" -ForegroundColor Green
     } else {
-        Write-Host "Position accuracy test INCONCLUSIVE - No data available or parsing error" -ForegroundColor Yellow
-        Write-Host "This may indicate the simulation did not run long enough or logger was not initialized" -ForegroundColor Yellow
-        exit 1  # Exit with error code since we expect position data
+        Write-Host "Position accuracy summary not available; continuing with CI verification." -ForegroundColor Yellow
     }
+
+    $checkerScript = Join-Path $ProjectPath "check_position_accuracy_ci.py"
+    if (-not (Test-Path $checkerScript)) {
+        Write-Host "Error: CI position accuracy checker not found at $checkerScript" -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "Running CI position accuracy verification..." -ForegroundColor Cyan
+    $thresholdText = [string]::Format([System.Globalization.CultureInfo]::InvariantCulture, "{0}", $ErrorThreshold)
+    $pythonArgs = @($checkerScript, "--log-dir", $positionDir, "--threshold", $thresholdText)
+
+    $exitCode = 0
+    Push-Location $ProjectPath
+    try {
+        & $PythonExecutable @pythonArgs
+        $exitCode = $LASTEXITCODE
+    }
+    catch {
+        Write-Host "Error running CI position accuracy checker: $($_.Exception.Message)" -ForegroundColor Red
+        $exitCode = 1
+    }
+    finally {
+        Pop-Location
+    }
+
+    if ($exitCode -ne 0) {
+        Write-Host "CI position accuracy verification FAILED (exit code $exitCode)." -ForegroundColor Red
+        exit $exitCode
+    }
+
+    Write-Host "CI position accuracy verification PASSED." -ForegroundColor Green
 }
 
 Write-Host "Script execution completed" -ForegroundColor Cyan 

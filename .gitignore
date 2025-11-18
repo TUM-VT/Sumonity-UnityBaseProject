@@ -105,3 +105,6 @@ speedsLogs.txt
 .config
 *.log
 *.csv
+
+AGENTS.md
+sumo_bridge.pid

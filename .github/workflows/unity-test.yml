@@ -3,6 +3,7 @@ name: Unity Tests
 on:
   push:
     branches: [ main, 'dev-ci' ]
+  workflow_dispatch:
 
 env:
   BYPASS_UNITY_INIT: $false  # Set to $true to bypass initialization check if needed

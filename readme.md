@@ -26,7 +26,6 @@ cd .\Sumonity-UnityBaseProject\
 
 Then get the 3d model from tum2twin:
 ```
-
 powershell -ExecutionPolicy Bypass -File download_unity_fbx.ps1
 ```
 
